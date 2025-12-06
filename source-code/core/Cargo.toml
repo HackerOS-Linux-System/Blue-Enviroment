@@ -7,16 +7,26 @@ description = "Core compositor for Blue Environment, supporting Wayland with XWa
 license = "MIT"
 
 [dependencies]
-smithay = { version = "0.3", features = ["backend_drm", "backend_winit", "backend_x11", "renderer_gl", "wayland_frontend", "xwayland"] }
+smithay = { version = "0.3", features = [
+    "backend_drm",
+    "backend_udev",
+    "backend_gbm",
+    "renderer_gl",
+    "wayland_frontend",
+    "xwayland"
+] }
+
 wayland-server = "0.31"
-wayland-protocols = { version = "0.31", features = ["server_protocols", "unstable"] }
+wayland-protocols = { version = "0.31", features = ["unstable"] } # Usunięto 'server_protocols'
+
 xkbcommon = { version = "0.7", features = ["wayland"] }
 calloop = "0.13"
-egl = "0.3"
-gles31 = "0.1"
+
+egl = "0.2.7"
+gles31 = "1.0.1"
+
 log = "0.4"
 env_logger = "0.11"
-smithay-egl = "0.3"
 input = "0.9"
 udev = "0.8"
 drm = "0.12"
