@@ -7,14 +7,11 @@ description = "Shell panel for Blue Environment, including clock, tray, running 
 license = "MIT"
 
 [dependencies]
-gtk = { version = "0.18", features = ["v4_10"] }
-gio = "0.18"
-glib = "0.18"
+gtk = { version = "0.17" }
+gio = "0.17"
+glib = "0.17"
 gtk-layer-shell = "0.6"
-adw = { package = "libadwaita", version = "0.6", features = ["v1_4"] }
 chrono = "0.4"
 battery = "0.7"
-network-manager = "0.4"
+network-manager = "0.11"
 libpulse-binding = "2.28"
-# For tray, assuming a crate like statusnotifier
-statusnotifier = "0.1"  # Note: This may not exist; placeholder for system tray implementation
