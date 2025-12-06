@@ -1,1 +1,14 @@
+[package]
+name = "launcher"
+version = "0.1.0"
+edition = "2021"
+authors = ["HackerOS Team <hackeros068@gmail.com>"]
+description = "Full-screen application launcher for Blue Environment, inspired by Android menu."
+license = "MIT"
 
+[dependencies]
+gtk = { version = "0.18", features = ["v4_10"] }
+gio = "0.18"
+glib = "0.18"
+adw = { package = "libadwaita", version = "0.6", features = ["v1_4"] }
+gdk = "0.18"
