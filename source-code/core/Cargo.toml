@@ -5,34 +5,26 @@ edition = "2021"
 authors = ["HackerOS Team <hackeros068@gmail.com>"]
 description = "Core compositor for Blue Environment, supporting Wayland with XWayland backend."
 license = "MIT"
-
 [dependencies]
-smithay = { version = "0.3", features = [
+smithay = { git = "https://github.com/Smithay/smithay.git", branch = "master", features = [
     "backend_drm",
-    "backend_udev",
     "backend_gbm",
+    "backend_libinput",
+    "backend_session_libseat",
+    "backend_udev",
+    "backend_winit",
+    "desktop",
+    "input",
     "renderer_gl",
     "wayland_frontend",
     "xwayland"
 ] }
-
 wayland-server = "0.31"
-wayland-protocols = { version = "0.31", features = ["unstable"] } # Usunięto 'server_protocols'
-
+wayland-protocols = { version = "0.31", features = ["server", "unstable", "staging"] }
 xkbcommon = { version = "0.7", features = ["wayland"] }
-calloop = "0.13"
-
-egl = "0.2.7"
-gles31 = "1.0.1"
-
 log = "0.4"
 env_logger = "0.11"
-input = "0.9"
-udev = "0.8"
-drm = "0.12"
-gbm = "0.15"
-nix = "0.29"
-
+x11rb = "0.13.2"
 [features]
 default = ["wayland", "xwayland"]
 wayland = []
