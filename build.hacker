@@ -13,6 +13,9 @@
 // qml-module-qtgraphicaleffects
 // qt6-wayland
 // qt6-wayland-dev
+// qt6-base-dev
+// qt6-base-dev-tools
+
 
 > cd source-code
 >>> cd decorations && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make
