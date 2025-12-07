@@ -23,8 +23,8 @@
 
 
 > cd source-code
->>> cd decorations && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make
->>> cd wm && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make
+>>> cd decorations && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j$(nproc)
+>>> cd wm && mkdir build && cd build &&  cmake -DCMAKE_BUILD_TYPE=Release ../ && make -j$(nproc)
 >>> cd core && cargo build --release
 >>> cd CLI && crystal build src/main.cr --release && sudo mv main blue-enviroment
 >>> cd shell && cargo build --release
