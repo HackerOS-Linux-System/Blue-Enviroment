@@ -1,44 +1,38 @@
-// src/main.rs
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use adw::{prelude::*, StyleManager};
-use gdk::{keys::constants as keys, EventMask, Key, ModifierType};
+use gdk::{Key, ModifierType};
 use gio::prelude::*;
-use glib::{clone, ControlFlow, MainContext};
-use gtk::glib;
+use glib::{clone, MainContext};
 use gtk::prelude::*;
-use gtk::{Align, ApplicationWindow, Box, Entry, FlowBox, Image, Label, Orientation, ScrolledWindow};
+use gtk::{gesture::GestureClick, Align, ApplicationWindow, Box as GtkBox, Entry, EventControllerKey, FlowBox, Image, Label, Orientation, ScrolledWindow};
 
 const APP_DIR: &str = "/usr/share/applications/";
 const DOUBLE_PRESS_TIMEOUT: u64 = 500; // milliseconds
 
-fn main() -> glib::ExitCode {
+fn main() {
     let application = adw::Application::builder()
-        .application_id("org.blueenvironment.launcher")
-        .build();
+    .application_id("org.blueenvironment.launcher")
+    .build();
 
     application.connect_startup(|app| {
         let style_manager = StyleManager::default();
         style_manager.set_color_scheme(adw::ColorScheme::ForceDark); // Modern dark theme
     });
-
     application.connect_activate(build_ui);
 
-    application.run()
+    std::process::exit(application.run());
 }
 
 fn build_ui(app: &adw::Application) {
     let window = ApplicationWindow::builder()
-        .application(app)
-        .fullscreened(true)
-        .build();
+    .application(app)
+    .build();
+    window.fullscreen();
 
-    window.add_events(EventMask::KEY_PRESS_MASK);
-
-    let main_box = Box::new(Orientation::Vertical, 10);
+    let main_box = GtkBox::new(Orientation::Vertical, 10);
     main_box.set_margin_top(20);
     main_box.set_margin_bottom(20);
     main_box.set_margin_start(20);
@@ -48,9 +42,9 @@ fn build_ui(app: &adw::Application) {
 
     // Search entry
     let search_entry = Entry::builder()
-        .placeholder_text("Search applications...")
-        .hexpand(true)
-        .build();
+    .placeholder_text("Search applications...")
+    .hexpand(true)
+    .build();
 
     // App grid
     let flow_box = FlowBox::new();
@@ -64,9 +58,9 @@ fn build_ui(app: &adw::Application) {
     flow_box.set_selection_mode(gtk::SelectionMode::None);
 
     let scrolled_window = ScrolledWindow::builder()
-        .vexpand(true)
-        .child(&flow_box)
-        .build();
+    .vexpand(true)
+    .child(&flow_box)
+    .build();
 
     // Load apps
     let apps = load_apps();
@@ -75,9 +69,9 @@ fn build_ui(app: &adw::Application) {
     // Filter on search
     search_entry.connect_changed(clone!(@weak flow_box, @strong apps => move |entry| {
         let text = entry.text().to_lowercase();
-        flow_box.foreach(|child| {
-            flow_box.remove(child);
-        });
+        while let Some(child) = flow_box.first_child() {
+            flow_box.remove(&child);
+        }
         let filtered = if text.is_empty() {
             apps.clone()
         } else {
@@ -88,32 +82,33 @@ fn build_ui(app: &adw::Application) {
 
     main_box.append(&search_entry);
     main_box.append(&scrolled_window);
-
     window.set_child(Some(&main_box));
 
     // Handle double Super key press to close
     let last_press: Rc<RefCell<Option<Instant>>> = Rc::new(RefCell::new(None));
-    window.connect_key_press_event(clone!(@weak window, @weak last_press => @default-return gtk::Inhibit(false), move |_, event| {
-        if event.keyval() == keys::Super_L || event.keyval() == keys::Super_R {
+    let controller = EventControllerKey::new();
+    controller.connect_key_pressed(clone!(@weak window, @weak last_press => move |_, key, _, _| {
+        if key == Key::Super_L || key == Key::Super_R {
             let now = Instant::now();
             let mut last = last_press.borrow_mut();
             if let Some(prev) = *last {
                 if now.duration_since(prev) < Duration::from_millis(DOUBLE_PRESS_TIMEOUT) {
                     window.close();
-                    return gtk::Inhibit(true);
+                    return true;
                 }
             }
             *last = Some(now);
             // Start a timeout to reset if no second press
             let last_clone = last_press.clone();
-            MainContext::default().spawn_local_with_priority(glib::Priority::DEFAULT_IDLE, async move {
+            MainContext::default().spawn_local(async move {
                 glib::timeout_future(Duration::from_millis(DOUBLE_PRESS_TIMEOUT)).await;
                 *last_clone.borrow_mut() = None;
             });
-            return gtk::Inhibit(true);
+            return true;
         }
-        gtk::Inhibit(false)
+        false
     }));
+    window.add_controller(controller);
 
     window.present();
 }
@@ -125,11 +120,11 @@ struct AppEntry {
 
 impl AppEntry {
     fn name(&self) -> String {
-        self.app_info.name().unwrap_or_else(|| "Unnamed".into())
+        self.app_info.name().to_string()
     }
 
     fn description(&self) -> Option<String> {
-        self.app_info.description()
+        self.app_info.description().map(|s| s.to_string())
     }
 
     fn icon(&self) -> Option<gio::Icon> {
@@ -143,7 +138,7 @@ fn load_apps() -> Vec<AppEntry> {
         for entry in dir {
             if let Ok(entry) = entry {
                 if entry.path().extension().and_then(|s| s.to_str()) == Some("desktop") {
-                    if let Some(app_info) = gio::DesktopAppInfo::from_filename(entry.path()) {
+                    if let Some(app_info) = gio::DesktopAppInfo::new_from_filename(entry.path().to_str().unwrap()) {
                         if app_info.should_show() {
                             apps.push(AppEntry { app_info });
                         }
@@ -156,20 +151,22 @@ fn load_apps() -> Vec<AppEntry> {
     apps
 }
 
-fn populate_apps(flow_box: &FlowBox, apps: &Vec<AppEntry>) {
+fn populate_apps(flow_box: &FlowBox, apps: &[AppEntry]) {
     for app in apps {
-        let box_ = Box::new(Orientation::Vertical, 6);
+        let box_ = GtkBox::new(Orientation::Vertical, 6);
         box_.set_halign(Align::Center);
         box_.set_valign(Align::Center);
         box_.set_tooltip_text(Some(&app.name()));
 
         let icon = if let Some(gicon) = app.icon() {
             Image::builder()
-                .gicon(&gicon)
-                .pixel_size(48)
-                .build()
+            .gicon(&gicon)
+            .pixel_size(48)
+            .build()
         } else {
-            Image::from_icon_name("application-x-executable")
+            let img = Image::new_from_icon_name("application-x-executable");
+            img.set_pixel_size(48);
+            img
         };
 
         let label = Label::new(Some(&app.name()));
@@ -181,15 +178,14 @@ fn populate_apps(flow_box: &FlowBox, apps: &Vec<AppEntry>) {
         box_.append(&label);
 
         let app_clone = app.clone();
-        box_.connect_gesture_press(clone!(@strong app_clone => move |_, _| {
+        let gesture = GestureClick::new();
+        gesture.connect_pressed(clone!(@strong app_clone => move |_, _n_press, _x, _y| {
             if let Err(err) = app_clone.app_info.launch(&[], None::<&gio::AppLaunchContext>) {
                 eprintln!("Failed to launch app: {}", err);
             }
         }));
+        box_.add_controller(gesture);
 
-        flow_box.append(&box_);
+        flow_box.insert(&box_, -1);
     }
 }
-
-// Add CSS if needed for styling
-// In build_ui, similar to shell.
