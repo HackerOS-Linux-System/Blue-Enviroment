@@ -1,3 +1,29 @@
 // cargo
 // crystal
-// 
+// cmake 
+// meson
+// gcc
+// g++
+// qttools5-dev
+// qttools5-dev-tools
+// qtmultimedia5-dev
+// qtdeclarative5-dev
+// qml-module-qtquick-controls
+// qml-module-qtquick-controls2     
+// qml-module-qtgraphicaleffects
+// qt6-wayland
+// qt6-wayland-dev
+
+> cd source-code
+>>> cd decorations && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make
+>>> cd wm && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make
+>>> cd core && cargo build --release
+>>> cd CLI && crystal build src/main.cr --release && sudo mv main blue-enviroment
+>>> cd shell && cargo build --release
+>>> cd launcher && cargo build --release
+>>> cd Desktop && gcc main.c -o Desktop
+! Opcjonalnie manager logowanie blue session manager > cd bsm && gcc main.c -o bsm
+> cd Apps
+>>> cd Blue-Software && meson setup build && meson compile -C build
+>>> cd File-Manager && meson setup build && meson compile -C build
+>>> cd Settings && meson setup build && meson compile -C build
