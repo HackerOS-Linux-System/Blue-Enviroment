@@ -36,7 +36,7 @@ def main
   start_process("#{bin_dir}/decorations")
 
   # Start core compositor
-  start_process("#{bin_dir}/blue_environment_core")
+  start_process("#{bin_dir}/core")
 
   # Give time for compositor to initialize
   sleep 2.seconds
@@ -50,13 +50,13 @@ def main
   # start_process("XWayland :0 -rootless -terminate")
 
   # Start WM
-  start_process("#{bin_dir}/blue-wm")
+  start_process("#{bin_dir}/wm")
 
   # Start shell (panel)
-  start_process("#{bin_dir}/blue_shell")
+  start_process("#{bin_dir}/shell")
 
   # Start desktop (background and icons)
-  start_process("#{bin_dir}/blue-desktop")
+  start_process("#{bin_dir}/desktop")
 
   # The launcher is started on demand via shortcuts or menu
 
