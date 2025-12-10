@@ -1,24 +1,21 @@
 #include <gtk/gtk.h>
 #include <gio/gio.h>
-#include <gio/gdesktopappinfo.h>
 #include <gtk-layer-shell/gtk-layer-shell.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define APP_DIR "/usr/share/applications/"
 #define WALLPAPER_DIR "/usr/share/wallpapers/"
 #define DEFAULT_WALLPAPER WALLPAPER_DIR "default_wallpaper.jpg" // Assume a default wallpaper file
 
-typedef struct {
+struct DesktopData {
     GtkWidget *window;
     GtkWidget *overlay;
     GtkWidget *background_image;
-    GtkWidget *icon_view;
+    GtkWidget *flow_box;
     GListModel *app_list;
-} DesktopData;
+};
 
-static void launch_app(GtkWidget *widget, gpointer user_data) {
-    GAppInfo *app_info = G_APP_INFO(user_data);
+static void launch_app(GAppInfo *app_info) {
     GError *error = NULL;
     if (!g_app_info_launch(app_info, NULL, NULL, &error)) {
         g_printerr("Failed to launch app: %s\n", error->message);
@@ -26,61 +23,89 @@ static void launch_app(GtkWidget *widget, gpointer user_data) {
     }
 }
 
-static void populate_icons(GtkIconView *icon_view, GListModel *model) {
-    gtk_icon_view_set_model(icon_view, GTK_TREE_MODEL(model));
-    gtk_icon_view_set_pixbuf_column(icon_view, 0);
-    gtk_icon_view_set_text_column(icon_view, 1);
-    gtk_icon_view_set_activate_on_single_click(icon_view, TRUE);
-    g_signal_connect(icon_view, "item-activated", G_CALLBACK(launch_app), NULL);
+static void on_icon_pressed(GtkGestureClick *gesture, int n_press, double x, double y, gpointer user_data) {
+    GtkEventController *controller = GTK_EVENT_CONTROLLER(gesture);
+    GtkWidget *widget = gtk_event_controller_get_widget(controller);
+    GAppInfo *app_info = (GAppInfo*)g_object_get_data(G_OBJECT(widget), "app_info");
+    if (app_info) {
+        launch_app(app_info);
+    }
+}
+
+static void populate_flowbox(GtkFlowBox *flow_box, GListModel *model) {
+    for (guint i = 0; i < g_list_model_get_n_items(model); i++) {
+        GAppInfo *app_info = G_APP_INFO(g_list_model_get_object(model, i));
+        if (!app_info) continue;
+        GIcon *gicon = g_app_info_get_icon(app_info);
+        GtkWidget *image = gtk_image_new_from_gicon(gicon);
+        gtk_image_set_pixel_size(GTK_IMAGE(image), 48);
+        GtkWidget *label = gtk_label_new(g_app_info_get_display_name(app_info));
+        gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+        gtk_label_set_justify(GTK_LABEL(label), GTK_JUSTIFY_CENTER);
+        GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+        gtk_box_append(GTK_BOX(box), image);
+        gtk_box_append(GTK_BOX(box), label);
+        gtk_widget_set_margin_start(box, 6);
+        gtk_widget_set_margin_end(box, 6);
+        gtk_widget_set_margin_top(box, 6);
+        gtk_widget_set_margin_bottom(box, 6);
+        gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
+        gtk_widget_set_valign(box, GTK_ALIGN_CENTER);
+        g_object_set_data_full(G_OBJECT(box), "app_info", g_object_ref(app_info), g_object_unref);
+        GtkGesture *gesture = gtk_gesture_click_new();
+        gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(gesture), 1);
+        g_signal_connect(gesture, "pressed", G_CALLBACK(on_icon_pressed), NULL);
+        gtk_widget_add_controller(box, GTK_EVENT_CONTROLLER(gesture));
+        gtk_flow_box_append(flow_box, box);
+        g_object_unref(app_info);
+    }
 }
 
 static GListModel *load_apps() {
     GListStore *store = g_list_store_new(G_TYPE_APP_INFO);
-    GDir *dir = g_dir_open(APP_DIR, 0, NULL);
-    if (dir) {
-        const gchar *filename;
-        while ((filename = g_dir_read_name(dir)) != NULL) {
-            if (g_str_has_suffix(filename, ".desktop")) {
-                gchar *path = g_build_filename(APP_DIR, filename, NULL);
-                GDesktopAppInfo *app_info = g_desktop_app_info_new_from_filename(path);
-                if (app_info && g_app_info_should_show(G_APP_INFO(app_info))) {
-                    g_list_store_append(store, app_info);
-                    g_object_unref(app_info);
-                }
-                g_free(path);
-            }
+    GList *apps = g_app_info_get_all();
+    for (GList *l = apps; l != NULL; l = l->next) {
+        GAppInfo *app_info = G_APP_INFO(l->data);
+        if (g_app_info_should_show(app_info)) {
+            g_list_store_append(store, app_info);
         }
-        g_dir_close(dir);
     }
+    g_list_free_full(apps, g_object_unref);
     return G_LIST_MODEL(store);
 }
 
-static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
-    if (event->button == 3) { // Right click
-        GtkWidget *menu = gtk_menu_new();
-        GtkWidget *item_logout = gtk_menu_item_new_with_label("Logout");
-        GtkWidget *item_shutdown = gtk_menu_item_new_with_label("Shutdown");
-        GtkWidget *item_restart = gtk_menu_item_new_with_label("Restart");
+static void on_logout(GSimpleAction *action, GVariant *param, gpointer user_data) {
+    system("dm-tool switch-to-greeter");
+}
 
-        // Connect signals (placeholders, implement actual commands)
-        g_signal_connect(item_logout, "activate", G_CALLBACK(system), (gpointer)"dm-tool switch-to-greeter"); // Example
-        g_signal_connect(item_shutdown, "activate", G_CALLBACK(system), (gpointer)"systemctl poweroff");
-        g_signal_connect(item_restart, "activate", G_CALLBACK(system), (gpointer)"systemctl reboot");
+static void on_shutdown(GSimpleAction *action, GVariant *param, gpointer user_data) {
+    system("systemctl poweroff");
+}
 
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_logout);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_shutdown);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_restart);
+static void on_restart(GSimpleAction *action, GVariant *param, gpointer user_data) {
+    system("systemctl reboot");
+}
 
-        gtk_widget_show_all(menu);
-        gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent*)event);
-        return TRUE;
-    }
-    return FALSE;
+static void show_context_menu(double x, double y, DesktopData *data) {
+    GMenu *menu = g_menu_new();
+    g_menu_append(menu, "Logout", "app.logout");
+    g_menu_append(menu, "Shutdown", "app.shutdown");
+    g_menu_append(menu, "Restart", "app.restart");
+    GtkWidget *popover = gtk_popover_menu_new_from_model(G_MENU_MODEL(menu));
+    gtk_widget_set_parent(popover, data->window);
+    GdkRectangle point = { (int)x, (int)y, 0, 0 };
+    gtk_popover_set_pointing_to(GTK_POPOVER(popover), &point);
+    gtk_popover_popup(GTK_POPOVER(popover));
+    g_object_unref(menu);
+}
+
+static void on_desktop_click_pressed(GtkGestureClick *gesture, int n_press, double x, double y, gpointer user_data) {
+    if (n_press != 1) return;
+    show_context_menu(x, y, (DesktopData*)user_data);
 }
 
 static void activate(GtkApplication *app, gpointer user_data) {
     DesktopData *data = (DesktopData *)user_data;
-
     data->window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(data->window), "Blue Desktop");
     gtk_window_fullscreen(GTK_WINDOW(data->window));
@@ -95,60 +120,73 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_layer_set_anchor(GTK_WINDOW(data->window), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
     gtk_layer_set_keyboard_mode(GTK_WINDOW(data->window), GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
 
+    // Add actions to app
+    GSimpleAction *logout_action = g_simple_action_new("logout", NULL);
+    g_signal_connect(logout_action, "activate", G_CALLBACK(on_logout), NULL);
+    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(logout_action));
+    g_object_unref(logout_action);
+
+    GSimpleAction *shutdown_action = g_simple_action_new("shutdown", NULL);
+    g_signal_connect(shutdown_action, "activate", G_CALLBACK(on_shutdown), NULL);
+    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(shutdown_action));
+    g_object_unref(shutdown_action);
+
+    GSimpleAction *restart_action = g_simple_action_new("restart", NULL);
+    g_signal_connect(restart_action, "activate", G_CALLBACK(on_restart), NULL);
+    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(restart_action));
+    g_object_unref(restart_action);
+
     // Overlay for background and icons
     data->overlay = gtk_overlay_new();
 
     // Background image
-    data->background_image = gtk_image_new_from_file(DEFAULT_WALLPAPER);
+    data->background_image = gtk_picture_new_for_filename(DEFAULT_WALLPAPER);
+    gtk_picture_set_content_fit(GTK_PICTURE(data->background_image), GTK_CONTENT_FIT_COVER);
     gtk_widget_set_hexpand(data->background_image, TRUE);
     gtk_widget_set_vexpand(data->background_image, TRUE);
-    gtk_image_set_pixel_size(GTK_IMAGE(data->background_image), -1); // Scale to fit
-    gtk_overlay_add_overlay(GTK_OVERLAY(data->overlay), data->background_image);
+    gtk_overlay_set_child(GTK_OVERLAY(data->overlay), data->background_image);
 
-    // Icon view for desktop icons (apps)
-    data->icon_view = gtk_icon_view_new();
-    gtk_widget_set_hexpand(data->icon_view, TRUE);
-    gtk_widget_set_vexpand(data->icon_view, TRUE);
-    gtk_icon_view_set_item_orientation(GTK_ICON_VIEW(data->icon_view), GTK_ORIENTATION_VERTICAL);
-    gtk_icon_view_set_columns(GTK_ICON_VIEW(data->icon_view), -1);
-    gtk_icon_view_set_spacing(GTK_ICON_VIEW(data->icon_view), 12);
-    gtk_icon_view_set_item_padding(GTK_ICON_VIEW(data->icon_view), 6);
+    // Flow box for desktop icons (apps)
+    data->flow_box = gtk_flow_box_new();
+    gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(data->flow_box), 12);
+    gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(data->flow_box), 12);
+    gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(data->flow_box), GTK_SELECTION_NONE);
+    gtk_widget_set_hexpand(data->flow_box, TRUE);
+    gtk_widget_set_vexpand(data->flow_box, TRUE);
 
     // Load and populate apps
     data->app_list = load_apps();
-    populate_icons(GTK_ICON_VIEW(data->icon_view), data->app_list);
+    populate_flowbox(GTK_FLOW_BOX(data->flow_box), data->app_list);
 
     // Scrolled window for icons if many
-    GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
-    gtk_container_add(GTK_CONTAINER(scrolled), data->icon_view);
+    GtkWidget *scrolled = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), data->flow_box);
     gtk_overlay_add_overlay(GTK_OVERLAY(data->overlay), scrolled);
 
-    gtk_container_add(GTK_CONTAINER(data->window), data->overlay);
+    gtk_window_set_child(GTK_WINDOW(data->window), data->overlay);
 
     // Handle right click
-    gtk_widget_add_events(data->window, GDK_BUTTON_PRESS_MASK);
-    g_signal_connect(data->window, "button-press-event", G_CALLBACK(on_button_press), NULL);
+    GtkGesture *gesture = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(gesture), 3);
+    g_signal_connect(gesture, "pressed", G_CALLBACK(on_desktop_click_pressed), data);
+    gtk_widget_add_controller(data->overlay, GTK_EVENT_CONTROLLER(gesture));
 
     // Set dark theme
     GtkSettings *settings = gtk_settings_get_default();
     g_object_set(settings, "gtk-application-prefer-dark-theme", TRUE, NULL);
     g_object_set(settings, "gtk-theme-name", "Adwaita", NULL); // Or custom theme
 
-    gtk_widget_show_all(data->window);
+    gtk_widget_set_visible(data->window, TRUE);
 }
 
 int main(int argc, char **argv) {
-    GtkApplication *app = gtk_application_new("org.blueenvironment.desktop", G_APPLICATION_FLAGS_NONE);
+    GtkApplication *app = gtk_application_new("org.blueenvironment.desktop", G_APPLICATION_DEFAULT_FLAGS);
     DesktopData data = {0};
-
     g_signal_connect(app, "activate", G_CALLBACK(activate), &data);
-
     int status = g_application_run(G_APPLICATION(app), argc, argv);
     g_object_unref(app);
-
     if (data.app_list) {
         g_object_unref(data.app_list);
     }
-
     return status;
 }
