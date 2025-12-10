@@ -31,35 +31,25 @@ end
 def main
   check_environment
   bin_dir = setup_directories
-
   # Apply decorations/themes first
   start_process("#{bin_dir}/decorations")
-
   # Start core compositor
   start_process("#{bin_dir}/core")
-
   # Give time for compositor to initialize
   sleep 2.seconds
-
   # Assume socket is wayland-0
   ENV["WAYLAND_DISPLAY"] = "wayland-0"
-  ENV["XDG_RUNTIME_DIR"] ||= "/run/user/#{Process.uid}"
-
+  ENV["XDG_RUNTIME_DIR"] ||= "/run/user/#{LibC.getuid}"
   # Start XWayland if not handled by core
   # Assuming core handles it, but if needed:
   # start_process("XWayland :0 -rootless -terminate")
-
   # Start WM
   start_process("#{bin_dir}/wm")
-
   # Start shell (panel)
   start_process("#{bin_dir}/shell")
-
   # Start desktop (background and icons)
-  start_process("#{bin_dir}/desktop")
-
+  start_process("#{bin_dir}/Desktop")
   # The launcher is started on demand via shortcuts or menu
-
   # Keep the launcher process alive, wait for children
   channel = Channel(Nil).new
   Signal::INT.trap { channel.send(nil) }
