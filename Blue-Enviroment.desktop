@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Blue Enviroment
+Comment=Graphical environment for HackerOS.
+Exec=Blue-Enviroment
+Type=Application
+DesktopNames=HackerOS-Sessions
