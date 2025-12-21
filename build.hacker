@@ -30,7 +30,6 @@
 >>> cd shell && cargo build --release
 >>> cd launcher && cargo build --release
 >>> cd Desktop && g++ main.cpp -o main $(pkg-config --cflags --libs gtk4 gtk4-layer-shell-0)
-! Opcjonalnie manager logowanie blue session manager > cd bsm && gcc main.c -o bsm
 > cd Apps
 >>> cd Blue-Software && meson setup build && meson compile -C build
 >>> cd File-Manager && meson setup build && meson compile -C build
