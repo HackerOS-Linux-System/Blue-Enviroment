@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["HackerOS Team <hackeros068@gmail.com>"]
 description = "Shell panel for Blue Environment, including clock, tray, running apps, and system icons."
 license = "MIT"
+
 [dependencies]
 adw = { package = "libadwaita", version = "0.7" }
 gtk = { package = "gtk4", version = "0.9" }
