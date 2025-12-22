@@ -1,26 +1,34 @@
 use std::error::Error;
+use std::os::unix::io::OwnedFd;
+use std::os::fd::BorrowedFd;
 use std::sync::Arc;
-use log::info;
+use std::time::Instant;
 use smithay::{
-    desktop::{layer_map_for_output, LayerSurface as DesktopLayerSurface, PopupKind, PopupManager, Space, Window},
+    backend::allocator::dmabuf::Dmabuf,
+    desktop::{
+        layer_map_for_output, LayerSurface as DesktopLayerSurface, PopupKind,
+        PopupManager, Space, Window,
+    },
     input::{Seat, SeatHandler, SeatState},
-    output::{Output, PhysicalProperties, Subpixel, Mode},
+    output::{Output, PhysicalProperties, Subpixel},
     reexports::{
-        calloop::{EventLoop, timer::{Timer, TimeoutAction}},
         wayland_server::{
-            Display, DisplayHandle,
-            protocol::{wl_output::WlOutput, wl_surface::WlSurface, wl_seat::WlSeat, wl_buffer::WlBuffer},
+            backend::{ClientData, ClientId, DisconnectReason},
+            protocol::{wl_buffer::WlBuffer, wl_output::WlOutput, wl_seat::WlSeat, wl_surface::WlSurface},
+            Client, Display, DisplayHandle,
         },
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
     },
-    utils::{Logical, Rectangle, Serial, Size, Point},
+    utils::{Logical, Rectangle, Serial},
     wayland::{
         buffer::BufferHandler,
-        compositor::{CompositorState, CompositorHandler, CompositorClientState},
-        dmabuf::{DmabufHandler, DmabufState, ImportNotifier},
+        compositor::{CompositorClientState, CompositorHandler, CompositorState},
+        dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::{OutputHandler, OutputManagerState},
         selection::{SelectionHandler, SelectionSource, SelectionTarget},
-        selection::data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
+        selection::data_device::{
+            DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler
+        },
         shell::{
             wlr_layer::{Layer, LayerSurface, WlrLayerShellHandler, WlrLayerShellState},
             xdg::{
@@ -30,16 +38,19 @@ use smithay::{
         },
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,
-        xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
-    xwayland::{XWayland, X11Wm, XwmHandler, X11Surface, XWaylandClientData},
-    xwayland::xwm::{Reorder, ResizeEdge, XwmId},
-    reexports::wayland_server::Client,
+    xwayland::{
+        xwm::{Reorder, ResizeEdge, XwmId},
+        X11Surface, X11Wm, XWayland, XWaylandClientData, XWaylandEvent, XwmHandler,
+    },
+    wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
 };
-use std::time::Duration;
+use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction, generic::Generic};
+use smithay::input::dnd::DndGrabHandler;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::process::Stdio;
-use std::os::unix::io::OwnedFd;
-use smithay::input::dnd::{DndGrabHandler, DndTarget, GrabType, Source};
+use log::info;
 smithay::delegate_compositor!(BlueCompositorState);
 smithay::delegate_shm!(BlueCompositorState);
 smithay::delegate_xdg_shell!(BlueCompositorState);
@@ -50,10 +61,9 @@ smithay::delegate_seat!(BlueCompositorState);
 smithay::delegate_output!(BlueCompositorState);
 smithay::delegate_data_device!(BlueCompositorState);
 smithay::delegate_xwayland_shell!(BlueCompositorState);
-
-#[allow(dead_code)]
 #[derive(Debug)]
 struct BlueCompositorState {
+    display: Rc<RefCell<Display<BlueCompositorState>>>,
     display_handle: DisplayHandle,
     compositor_state: CompositorState,
     xdg_shell_state: XdgShellState,
@@ -66,16 +76,13 @@ struct BlueCompositorState {
     space: Space<Window>,
     popups: PopupManager,
     seat: Seat<Self>,
-    start_time: std::time::Instant,
-    xwayland: Option<XWayland>,
+    start_time: Instant,
     xwayland_client: Option<Client>,
     xwm: Option<Arc<X11Wm>>,
     theme: Theme,
     data_device_state: DataDeviceState,
     xwayland_shell_state: XWaylandShellState,
 }
-
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct Theme {
     background_color: (f32, f32, f32, f32),
@@ -95,16 +102,15 @@ impl Default for Theme {
 struct ClientState {
     compositor_state: CompositorClientState,
 }
-impl wayland_server::backend::ClientData for ClientState {
-    fn initialized(&self, _client_id: wayland_server::backend::ClientId) {}
-    fn disconnected(&self, _client_id: wayland_server::backend::ClientId, _reason: wayland_server::backend::DisconnectReason) {}
+impl ClientData for ClientState {
+    fn initialized(&self, _client_id: ClientId) {}
+    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
 }
-// === Handlers ===
 impl CompositorHandler for BlueCompositorState {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
     }
-    fn client_compositor_state<'a>(&self, client: &'a wayland_server::Client) -> &'a CompositorClientState {
+    fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
         if let Some(state) = client.get_data::<ClientState>() {
             &state.compositor_state
         } else if let Some(state) = client.get_data::<XWaylandClientData>() {
@@ -113,8 +119,17 @@ impl CompositorHandler for BlueCompositorState {
             panic!("Unknown client data");
         }
     }
-    fn commit(&mut self, _surface: &WlSurface) {
-        // Wszystko obsługiwane automatycznie przez Space/PopupManager
+    fn commit(&mut self, surface: &WlSurface) {
+        // Handle commits, update space and popups
+        self.popups.commit(surface);
+        // For layers
+        if let Some((o, layer)) = self.space.outputs().find_map(|o| {
+            let map = layer_map_for_output(o);
+            let layer = map.layers().find(|l| l.wl_surface() == surface);
+            layer.map(|l| (o.clone(), l.clone()))
+        }) {
+            layer.send_frame(&o, self.start_time.elapsed(), None, |_, _| Some(o.clone()));
+        }
     }
 }
 impl ShmHandler for BlueCompositorState {
@@ -138,14 +153,15 @@ impl XdgShellHandler for BlueCompositorState {
     }
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let window = Window::new_wayland_window(surface);
-        self.space.map_element(window.clone(), (0, 0), true);
+        self.space.map_element(window, (0, 0), false);
     }
     fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
         surface.with_pending_state(|state| {
             state.geometry = positioner.get_geometry();
         });
-        let _ = surface.send_configure();
-        let _ = self.popups.track_popup(PopupKind::Xdg(surface));
+        if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
+            log::warn!("Failed to track popup: {}", err);
+        }
     }
     fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {}
     fn reposition_request(&mut self, _surface: PopupSurface, _positioner: PositionerState, _token: u32) {}
@@ -155,7 +171,7 @@ impl XdgDecorationHandler for BlueCompositorState {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(DecorationMode::ServerSide);
         });
-        toplevel.send_configure();
+        toplevel.send_pending_configure();
     }
     fn request_mode(&mut self, _toplevel: ToplevelSurface, _mode: DecorationMode) {}
     fn unset_mode(&mut self, _toplevel: ToplevelSurface) {}
@@ -171,12 +187,11 @@ impl WlrLayerShellHandler for BlueCompositorState {
         _layer: Layer,
         namespace: String,
     ) {
-        let desktop_layer = DesktopLayerSurface::new(surface, namespace);
         let output = output
-        .and_then(|o| self.space.outputs().find(|op| op.owns(&o)).cloned())
+        .and_then(|o| self.space.outputs().find(|op| op.user_data().get::<WlOutput>().map(|u| u == &o).unwrap_or(false)).cloned())
         .unwrap_or_else(|| self.space.outputs().next().cloned().unwrap());
-        let mut map = layer_map_for_output(&output);
-        let _ = map.map_layer(&desktop_layer);
+        let layer = DesktopLayerSurface::new(surface, namespace);
+        layer_map_for_output(&output).map_layer(&layer).unwrap();
     }
 }
 impl BufferHandler for BlueCompositorState {
@@ -186,8 +201,8 @@ impl DmabufHandler for BlueCompositorState {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
         self.dmabuf_state.as_mut().unwrap()
     }
-    fn dmabuf_imported(&mut self, _global: &smithay::wayland::dmabuf::DmabufGlobal, _dmabuf: smithay::backend::allocator::dmabuf::Dmabuf, notifier: ImportNotifier) {
-        let _ = notifier.successful::<Self>();
+    fn dmabuf_imported(&mut self, _global: &DmabufGlobal, _dmabuf: Dmabuf, notifier: ImportNotifier) {
+        notifier.successful::<Self>();
     }
 }
 impl OutputHandler for BlueCompositorState {}
@@ -195,11 +210,14 @@ impl XwmHandler for BlueCompositorState {
     fn xwm_state(&mut self, _xwm_id: XwmId) -> &mut X11Wm {
         Arc::get_mut(self.xwm.as_mut().unwrap()).unwrap()
     }
-    fn new_window(&mut self, _xwm_id: XwmId, _window: X11Surface) {}
+    fn new_window(&mut self, _xwm_id: XwmId, window: X11Surface) {
+        let w = Window::new_x11_window(window);
+        self.space.map_element(w, (0, 0), false);
+    }
     fn new_override_redirect_window(&mut self, _xwm_id: XwmId, _window: X11Surface) {}
     fn map_window_request(&mut self, _xwm_id: XwmId, window: X11Surface) {
         let w = Window::new_x11_window(window);
-        self.space.map_element(w, (0, 0), true);
+        self.space.map_element(w, (0, 0), false);
     }
     fn mapped_override_redirect_window(&mut self, _xwm_id: XwmId, _window: X11Surface) {}
     fn unmapped_window(&mut self, _xwm_id: XwmId, _window: X11Surface) {}
@@ -210,8 +228,8 @@ impl XwmHandler for BlueCompositorState {
         _window: X11Surface,
         _x: Option<i32>,
         _y: Option<i32>,
-        _width: Option<u32>,
-        _height: Option<u32>,
+        _w: Option<u32>,
+        _h: Option<u32>,
         _reorder: Option<Reorder>,
     ) {}
     fn configure_notify(
@@ -221,13 +239,7 @@ impl XwmHandler for BlueCompositorState {
         _geometry: Rectangle<i32, Logical>,
         _above: Option<u32>,
     ) {}
-    fn resize_request(
-        &mut self,
-        _xwm_id: XwmId,
-        _window: X11Surface,
-        _button: u32,
-        _edges: ResizeEdge,
-    ) {}
+    fn resize_request(&mut self, _xwm_id: XwmId, _window: X11Surface, _button: u32, _resize_edge: ResizeEdge) {}
     fn move_request(&mut self, _xwm_id: XwmId, _window: X11Surface, _button: u32) {}
 }
 impl DataDeviceHandler for BlueCompositorState {
@@ -242,8 +254,7 @@ impl SelectionHandler for BlueCompositorState {
         _ty: SelectionTarget,
         _source: Option<SelectionSource>,
         _seat: Seat<Self>,
-    ) {
-    }
+    ) {}
     fn send_selection(
         &mut self,
         _ty: SelectionTarget,
@@ -251,40 +262,44 @@ impl SelectionHandler for BlueCompositorState {
         _fd: OwnedFd,
         _seat: Seat<Self>,
         _user_data: &Self::SelectionUserData,
-    ) {
-    }
+    ) {}
 }
-impl WaylandDndGrabHandler for BlueCompositorState {
-    fn dnd_requested<S: Source>(
-        &mut self,
-        source: S,
-        _icon: Option<WlSurface>,
-        _seat: Seat<Self>,
-        _serial: Serial,
-        _type_: GrabType,
-    ) {
-        source.cancel();
-    }
-}
-impl DndGrabHandler for BlueCompositorState {
-    fn dropped(&mut self, _target: Option<DndTarget<'_, Self>>, _validated: bool, _seat: Seat<Self>, _location: Point<f64, Logical>) {
-    }
-}
+impl WaylandDndGrabHandler for BlueCompositorState {}
+impl DndGrabHandler for BlueCompositorState {}
 impl XWaylandShellHandler for BlueCompositorState {
     fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
         &mut self.xwayland_shell_state
     }
+    fn surface_associated(&mut self, _xwm_id: XwmId, _surface: WlSurface, _x11_surface: X11Surface) {}
 }
-// === Main ===
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut event_loop = EventLoop::<BlueCompositorState>::try_new()?;
-    let loop_handle = event_loop.handle();
-    let display = Display::<BlueCompositorState>::new()?;
+    let mut display: Display<BlueCompositorState> = Display::new()?;
     let display_handle = display.handle();
-    let mut seat_state = SeatState::<BlueCompositorState>::new();
-    let seat = seat_state.new_wl_seat(&display_handle, "seat0");
+    let poll_fd = display.backend().poll_fd().try_clone_to_owned()?;
+    let mut event_loop: EventLoop<BlueCompositorState> = EventLoop::try_new()?;
+    let loop_handle = event_loop.handle();
+    let socket_source = ListeningSocketSource::new_auto()?;
+    let socket_name = socket_source.socket_name().to_os_string();
+    info!("Listening on {:?}", socket_name);
+    loop_handle.insert_source(socket_source, |stream, _, state| {
+        state
+        .display
+        .borrow()
+        .handle()
+        .insert_client(stream, Arc::new(ClientState::default()))
+        .unwrap();
+    })?;
+    let wayland_source = Generic::new(poll_fd, Interest::READ, Mode::Level);
+    loop_handle.insert_source(wayland_source, |_, _, state| {
+        let display = state.display.clone();
+        display.borrow_mut().dispatch_clients(state).unwrap();
+        Ok(PostAction::Continue)
+    })?;
+    let mut seat_state = SeatState::new();
+    let seat = seat_state.new_seat("seat0");
     let mut state = BlueCompositorState {
+        display: Rc::new(RefCell::new(display)),
         display_handle: display_handle.clone(),
         compositor_state: CompositorState::new::<BlueCompositorState>(&display_handle),
         xdg_shell_state: XdgShellState::new::<BlueCompositorState>(&display_handle),
@@ -297,91 +312,68 @@ fn main() -> Result<(), Box<dyn Error>> {
         space: Space::default(),
         popups: PopupManager::default(),
         seat,
-        start_time: std::time::Instant::now(),
-        xwayland: None,
+        start_time: Instant::now(),
         xwayland_client: None,
         xwm: None,
         theme: Theme::default(),
         data_device_state: DataDeviceState::new::<BlueCompositorState>(&display_handle),
         xwayland_shell_state: XWaylandShellState::new::<BlueCompositorState>(&display_handle),
     };
-    // Dmabuf global
     let mut dmabuf_state = DmabufState::new();
     let _dmabuf_global = dmabuf_state.create_global::<BlueCompositorState>(&display_handle, vec![]);
     state.dmabuf_state = Some(dmabuf_state);
-    // Dummy output
+    // Add a dummy output for testing
     let output = Output::new(
-        "blue-1".to_string(),
+        "blue-1".into(),
                              PhysicalProperties {
-                                 size: Size::from((1920, 1080)),
+                                 size: (1920, 1080).into(),
                              subpixel: Subpixel::Unknown,
-                             make: "Blue Environment".to_string(),
-                             model: "Virtual-1".to_string(),
-                             serial_number: "unknown".to_string(),
+                             make: "Blue Environment".into(),
+                             model: "Virtual-1".into(),
+                             serial_number: "0".to_string(),
                              },
     );
-    let mode = Mode {
-        size: Size::from((1920, 1080)),
-        refresh: 60_000,
-    };
-    output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
-    output.set_preferred(mode);
+    let _global = output.create_global::<BlueCompositorState>(&display_handle);
     state.space.map_output(&output, (0, 0));
-    // Wayland socket
-    let socket_source = ListeningSocketSource::new_auto()?;
-    let socket_name = socket_source.socket_name().to_os_string();
-    info!("Listening on {socket_name:?}");
-    loop_handle.insert_source(socket_source, move |client_stream, _, state| {
-        state.display_handle.insert_client(client_stream, Arc::new(ClientState::default())).unwrap();
-    })?;
-    // XWayland
-    let loop_handle_clone = loop_handle.clone();
-    let (xwayland, client) = XWayland::spawn(
+    // XWayland setup
+    let (xwayland, xwayland_client) = XWayland::spawn::<String, String, Vec<(String, String)>, _>(
         &display_handle,
         None,
-        std::env::vars(),
-                                             true,
-                                             Stdio::null(),
-                                             Stdio::null(),
-                                             |user_data| {
-                                                 user_data.insert_if_missing(CompositorClientState::default);
-                                             },
+        vec![],
+        true,
+        Stdio::null(),
+                                                                                                  Stdio::null(),
+                                                                                                  |_| {},
     )?;
-    state.xwayland = Some(xwayland);
-    state.xwayland_client = Some(client);
+    state.xwayland_client = Some(xwayland_client);
+    let xwayland_loop_handle = loop_handle.clone();
     loop_handle.insert_source(
-        Timer::immediate(),
-                              move |_, _, state| {
-                                  if let Some(xwayland) = state.xwayland.as_mut() {
-                                      match xwayland.take_socket() {
-                                          Ok(Some(connection)) => {
-                                              let xwm = match X11Wm::start_wm(
-                                                  loop_handle_clone.clone(),
-                                                                              &state.display_handle,
-                                                                              connection,
-                                                                              state.xwayland_client.as_ref().unwrap().clone(),
-                                              ) {
-                                                  Ok(x) => x,
-                              Err(e) => {
-                                  log::error!("Failed to start XWM: {}", e);
-                                  return TimeoutAction::ToDuration(Duration::from_millis(100));
-                              }
-                                              };
-                                              state.xwm = Some(Arc::new(xwm));
-                                              info!("XWayland is ready");
-                                              TimeoutAction::Drop
-                                          }
-                                          Ok(None) => TimeoutAction::ToDuration(Duration::from_millis(100)),
-                              Err(e) => {
-                                  log::error!("Error taking XWayland socket: {}", e);
-                                  TimeoutAction::ToDuration(Duration::from_millis(100))
-                              }
-                                      }
-                                  } else {
-                                      TimeoutAction::ToDuration(Duration::from_millis(100))
-                                  }
-                              },
+        xwayland,
+        move |event, _, state| {
+            match event {
+                XWaylandEvent::Ready {
+                    x11_socket,
+                    display_number,
+                } => {
+                    let xwm = X11Wm::start_wm(
+                        xwayland_loop_handle.clone(),
+                                              &state.display_handle,
+                                              x11_socket,
+                                              state.xwayland_client.clone().unwrap(),
+                    )
+                    .unwrap();
+                    state.xwm = Some(Arc::new(xwm));
+                    info!("XWayland ready on display :{}", display_number);
+                }
+                XWaylandEvent::Error => {
+                    log::error!("XWayland error");
+                }
+            }
+        },
     )?;
-    event_loop.run(None, &mut state, |_| {})?;
+    // Run the event loop
+    event_loop.run(None, &mut state, |state| {
+        state.display.borrow_mut().flush_clients().unwrap();
+    })?;
     Ok(())
 }
