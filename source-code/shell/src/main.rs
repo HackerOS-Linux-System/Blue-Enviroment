@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
+
 use adw::{prelude::*, StyleManager};
 use chrono::Local;
 use glib::{timeout_add_local, ControlFlow};
@@ -17,6 +18,7 @@ use libpulse_binding::proplist::Proplist;
 use libpulse_binding::callbacks::ListResult;
 // Placeholder for tray
 // use statusnotifier::StatusNotifierWatcher;
+
 fn main() -> glib::ExitCode {
     let application = adw::Application::builder()
     .application_id("org.blueenvironment.shell")
@@ -28,6 +30,7 @@ fn main() -> glib::ExitCode {
     application.connect_activate(build_ui);
     application.run()
 }
+
 fn build_ui(app: &adw::Application) {
     let window = Window::new();
     window.init_layer_shell();
@@ -109,9 +112,11 @@ fn build_ui(app: &adw::Application) {
     provider.load_from_data(".panel { background-color: #1e1e1e; color: #dddddd; }"); // Dark theme
     gtk::style_context_add_provider_for_display(&gtk::gdk::Display::default().unwrap(), &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
+
 fn format_time() -> String {
     Local::now().format("%H:%M:%S").to_string()
 }
+
 fn update_wifi_status(label: &Label) {
     // Use network_manager
     let conn = Connection::new_system().unwrap();
@@ -128,6 +133,7 @@ fn update_wifi_status(label: &Label) {
     }
     label.set_label(&format!("WiFi: {}", status));
 }
+
 fn update_battery_status(label: &Label) {
     // Use battery crate
     let manager = BatteryManager::new().unwrap();
@@ -141,6 +147,7 @@ fn update_battery_status(label: &Label) {
     }
     label.set_label(&format!("Battery: {:.0}%", percentage));
 }
+
 fn update_audio_status(label: &Label) {
     // Use pulseaudio
     let mut proplist = Proplist::new().unwrap();
