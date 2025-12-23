@@ -1,36 +1,22 @@
 // cargo
 // crystal
-// cmake 
+// golang
 // meson
-// gcc
-// g++
-// qttools5-dev
-// qttools5-dev-tools
-// qtmultimedia5-dev
-// qtdeclarative5-dev
-// qml-module-qtquick-controls
-// qml-module-qtquick-controls2     
-// qml-module-qtgraphicaleffects
-// qt6-wayland
-// qt6-wayland-dev
-// qt6-base-dev
-// qt6-base-dev-tools
-// qt6-base-dev
-// qt6-waylandcompositor-dev
-// qt6-declarative-dev
-// qt6-tools-dev
-
+// valac
+// python3.13
 
 
 > cd source-code
->>> cd decorations && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j$(nproc)
->>> cd wm && mkdir build && cd build &&  cmake -DCMAKE_BUILD_TYPE=Release ../ && make -j$(nproc)
+>>> cd decorations && python3.13 -m
+>>> cd wm && cargo build --release
 >>> cd core && cargo build --release
 >>> cd CLI && crystal build src/main.cr --release && sudo mv main blue-enviroment
+>>> cd CLI && cd update && go get blue-update && go build
+>>> cd CLI && cd blue && crystal build src/main.cr --release
 >>> cd shell && cargo build --release
 >>> cd launcher && cargo build --release
->>> cd Desktop && g++ main.cpp -o main $(pkg-config --cflags --libs gtk4 gtk4-layer-shell-0)
+>>> cd Desktop && python3.13 -m
 > cd Apps
 >>> cd Blue-Software && meson setup build && meson compile -C build
->>> cd File-Manager && meson setup build && meson compile -C build
->>> cd Settings && meson setup build && meson compile -C build
+>>> cd File-Manager && python3.13 -m
+>>> cd Settings && python3.13 -m
