@@ -1,192 +1,175 @@
-#include <gtk/gtk.h>
-#include <gio/gio.h>
-#include <gtk-layer-shell/gtk-layer-shell.h>
-#include <stdlib.h>
-#include <string.h>
+import sys
+import os
+import gi
 
-#define WALLPAPER_DIR "/usr/share/wallpapers/"
-#define DEFAULT_WALLPAPER WALLPAPER_DIR "default_wallpaper.jpg" // Assume a default wallpaper file
+gi.require_version('Gtk', '4.0')
+gi.require_version('Gio', '2.0')
+gi.require_version('Gdk', '4.0')
+gi.require_version('GtkLayerShell', '0.1')  # Assuming the binding is available
 
-struct DesktopData {
-    GtkWidget *window;
-    GtkWidget *overlay;
-    GtkWidget *background_image;
-    GtkWidget *flow_box;
-    GListModel *app_list;
-};
+from gi.repository import Gtk, Gio, Gdk, GtkLayerShell, GLib
 
-static void launch_app(GAppInfo *app_info) {
-    GError *error = NULL;
-    if (!g_app_info_launch(app_info, NULL, NULL, &error)) {
-        g_printerr("Failed to launch app: %s\n", error->message);
-        g_error_free(error);
-    }
-}
+WALLPAPER_DIR = "/usr/share/wallpapers/"
+DEFAULT_WALLPAPER = WALLPAPER_DIR + "default_wallpaper.jpg"  # Assume a default wallpaper file
 
-static void on_icon_pressed(GtkGestureClick *gesture, int n_press, double x, double y, gpointer user_data) {
-    GtkEventController *controller = GTK_EVENT_CONTROLLER(gesture);
-    GtkWidget *widget = gtk_event_controller_get_widget(controller);
-    GAppInfo *app_info = (GAppInfo*)g_object_get_data(G_OBJECT(widget), "app_info");
-    if (app_info) {
-        launch_app(app_info);
-    }
-}
+class BlueDesktop(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="org.blueenvironment.desktop", flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        self.window = None
+        self.overlay = None
+        self.background_image = None
+        self.flow_box = None
+        self.app_list = None
 
-static void populate_flowbox(GtkFlowBox *flow_box, GListModel *model) {
-    for (guint i = 0; i < g_list_model_get_n_items(model); i++) {
-        GAppInfo *app_info = G_APP_INFO(g_list_model_get_object(model, i));
-        if (!app_info) continue;
-        GIcon *gicon = g_app_info_get_icon(app_info);
-        GtkWidget *image = gtk_image_new_from_gicon(gicon);
-        gtk_image_set_pixel_size(GTK_IMAGE(image), 48);
-        GtkWidget *label = gtk_label_new(g_app_info_get_display_name(app_info));
-        gtk_label_set_wrap(GTK_LABEL(label), TRUE);
-        gtk_label_set_justify(GTK_LABEL(label), GTK_JUSTIFY_CENTER);
-        GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-        gtk_box_append(GTK_BOX(box), image);
-        gtk_box_append(GTK_BOX(box), label);
-        gtk_widget_set_margin_start(box, 6);
-        gtk_widget_set_margin_end(box, 6);
-        gtk_widget_set_margin_top(box, 6);
-        gtk_widget_set_margin_bottom(box, 6);
-        gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
-        gtk_widget_set_valign(box, GTK_ALIGN_CENTER);
-        g_object_set_data_full(G_OBJECT(box), "app_info", g_object_ref(app_info), g_object_unref);
-        GtkGesture *gesture = gtk_gesture_click_new();
-        gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(gesture), 1);
-        g_signal_connect(gesture, "pressed", G_CALLBACK(on_icon_pressed), NULL);
-        gtk_widget_add_controller(box, GTK_EVENT_CONTROLLER(gesture));
-        gtk_flow_box_append(flow_box, box);
-        g_object_unref(app_info);
-    }
-}
+    def do_activate(self):
+        self.window = Gtk.ApplicationWindow(application=self)
+        self.window.set_title("Blue Desktop")
+        self.window.fullscreen()
 
-static GListModel *load_apps() {
-    GListStore *store = g_list_store_new(G_TYPE_APP_INFO);
-    GList *apps = g_app_info_get_all();
-    for (GList *l = apps; l != NULL; l = l->next) {
-        GAppInfo *app_info = G_APP_INFO(l->data);
-        if (g_app_info_should_show(app_info)) {
-            g_list_store_append(store, app_info);
-        }
-    }
-    g_list_free_full(apps, g_object_unref);
-    return G_LIST_MODEL(store);
-}
+        # Init layer shell
+        GtkLayerShell.init_for_window(self.window)
+        GtkLayerShell.set_layer(self.window, GtkLayerShell.Layer.BACKGROUND)
+        GtkLayerShell.set_namespace(self.window, "blue-desktop")
+        GtkLayerShell.set_anchor(self.window, GtkLayerShell.Edge.LEFT, True)
+        GtkLayerShell.set_anchor(self.window, GtkLayerShell.Edge.RIGHT, True)
+        GtkLayerShell.set_anchor(self.window, GtkLayerShell.Edge.TOP, True)
+        GtkLayerShell.set_anchor(self.window, GtkLayerShell.Edge.BOTTOM, True)
+        GtkLayerShell.set_keyboard_mode(self.window, GtkLayerShell.KeyboardMode.NONE)
 
-static void on_logout(GSimpleAction *action, GVariant *param, gpointer user_data) {
-    system("dm-tool switch-to-greeter");
-}
+        # Add actions to app
+        logout_action = Gio.SimpleAction.new("logout", None)
+        logout_action.connect("activate", self.on_logout)
+        self.add_action(logout_action)
 
-static void on_shutdown(GSimpleAction *action, GVariant *param, gpointer user_data) {
-    system("systemctl poweroff");
-}
+        shutdown_action = Gio.SimpleAction.new("shutdown", None)
+        shutdown_action.connect("activate", self.on_shutdown)
+        self.add_action(shutdown_action)
 
-static void on_restart(GSimpleAction *action, GVariant *param, gpointer user_data) {
-    system("systemctl reboot");
-}
+        restart_action = Gio.SimpleAction.new("restart", None)
+        restart_action.connect("activate", self.on_restart)
+        self.add_action(restart_action)
 
-static void show_context_menu(double x, double y, DesktopData *data) {
-    GMenu *menu = g_menu_new();
-    g_menu_append(menu, "Logout", "app.logout");
-    g_menu_append(menu, "Shutdown", "app.shutdown");
-    g_menu_append(menu, "Restart", "app.restart");
-    GtkWidget *popover = gtk_popover_menu_new_from_model(G_MENU_MODEL(menu));
-    gtk_widget_set_parent(popover, data->window);
-    GdkRectangle point = { (int)x, (int)y, 0, 0 };
-    gtk_popover_set_pointing_to(GTK_POPOVER(popover), &point);
-    gtk_popover_popup(GTK_POPOVER(popover));
-    g_object_unref(menu);
-}
+        # Overlay for background and icons
+        self.overlay = Gtk.Overlay()
 
-static void on_desktop_click_pressed(GtkGestureClick *gesture, int n_press, double x, double y, gpointer user_data) {
-    if (n_press != 1) return;
-    show_context_menu(x, y, (DesktopData*)user_data);
-}
+        # Background image
+        self.background_image = Gtk.Picture.new_for_filename(DEFAULT_WALLPAPER)
+        self.background_image.set_content_fit(Gtk.ContentFit.COVER)
+        self.background_image.set_hexpand(True)
+        self.background_image.set_vexpand(True)
+        self.overlay.set_child(self.background_image)
 
-static void activate(GtkApplication *app, gpointer user_data) {
-    DesktopData *data = (DesktopData *)user_data;
-    data->window = gtk_application_window_new(app);
-    gtk_window_set_title(GTK_WINDOW(data->window), "Blue Desktop");
-    gtk_window_fullscreen(GTK_WINDOW(data->window));
+        # Flow box for desktop icons (apps)
+        self.flow_box = Gtk.FlowBox()
+        self.flow_box.set_column_spacing(12)
+        self.flow_box.set_row_spacing(12)
+        self.flow_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.flow_box.set_hexpand(True)
+        self.flow_box.set_vexpand(True)
 
-    // Init layer shell
-    gtk_layer_init_for_window(GTK_WINDOW(data->window));
-    gtk_layer_set_layer(GTK_WINDOW(data->window), GTK_LAYER_SHELL_LAYER_BACKGROUND);
-    gtk_layer_set_namespace(GTK_WINDOW(data->window), "blue-desktop");
-    gtk_layer_set_anchor(GTK_WINDOW(data->window), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
-    gtk_layer_set_anchor(GTK_WINDOW(data->window), GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
-    gtk_layer_set_anchor(GTK_WINDOW(data->window), GTK_LAYER_SHELL_EDGE_TOP, TRUE);
-    gtk_layer_set_anchor(GTK_WINDOW(data->window), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
-    gtk_layer_set_keyboard_mode(GTK_WINDOW(data->window), GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
+        # Load and populate apps
+        self.app_list = self.load_apps()
+        self.populate_flowbox(self.flow_box, self.app_list)
 
-    // Add actions to app
-    GSimpleAction *logout_action = g_simple_action_new("logout", NULL);
-    g_signal_connect(logout_action, "activate", G_CALLBACK(on_logout), NULL);
-    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(logout_action));
-    g_object_unref(logout_action);
+        # Scrolled window for icons if many
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_child(self.flow_box)
+        self.overlay.add_overlay(scrolled)
 
-    GSimpleAction *shutdown_action = g_simple_action_new("shutdown", NULL);
-    g_signal_connect(shutdown_action, "activate", G_CALLBACK(on_shutdown), NULL);
-    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(shutdown_action));
-    g_object_unref(shutdown_action);
+        self.window.set_child(self.overlay)
 
-    GSimpleAction *restart_action = g_simple_action_new("restart", NULL);
-    g_signal_connect(restart_action, "activate", G_CALLBACK(on_restart), NULL);
-    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(restart_action));
-    g_object_unref(restart_action);
+        # Handle right click
+        gesture = Gtk.GestureClick.new()
+        gesture.set_button(3)
+        gesture.connect("pressed", self.on_desktop_click_pressed)
+        self.overlay.add_controller(gesture)
 
-    // Overlay for background and icons
-    data->overlay = gtk_overlay_new();
+        # Set dark theme
+        settings = Gtk.Settings.get_default()
+        settings.set_property("gtk-application-prefer-dark-theme", True)
+        settings.set_property("gtk-theme-name", "Adwaita")  # Or custom theme
 
-    // Background image
-    data->background_image = gtk_picture_new_for_filename(DEFAULT_WALLPAPER);
-    gtk_picture_set_content_fit(GTK_PICTURE(data->background_image), GTK_CONTENT_FIT_COVER);
-    gtk_widget_set_hexpand(data->background_image, TRUE);
-    gtk_widget_set_vexpand(data->background_image, TRUE);
-    gtk_overlay_set_child(GTK_OVERLAY(data->overlay), data->background_image);
+        self.window.present()
 
-    // Flow box for desktop icons (apps)
-    data->flow_box = gtk_flow_box_new();
-    gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(data->flow_box), 12);
-    gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(data->flow_box), 12);
-    gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(data->flow_box), GTK_SELECTION_NONE);
-    gtk_widget_set_hexpand(data->flow_box, TRUE);
-    gtk_widget_set_vexpand(data->flow_box, TRUE);
+    def launch_app(self, app_info):
+        try:
+            app_info.launch(None, None)
+        except GLib.Error as error:
+            print(f"Failed to launch app: {error.message}")
 
-    // Load and populate apps
-    data->app_list = load_apps();
-    populate_flowbox(GTK_FLOW_BOX(data->flow_box), data->app_list);
+    def on_icon_pressed(self, gesture, n_press, x, y):
+        if n_press != 1:
+            return
+        widget = gesture.get_widget()
+        app_info = widget.get_data("app_info")
+        if app_info:
+            self.launch_app(app_info)
 
-    // Scrolled window for icons if many
-    GtkWidget *scrolled = gtk_scrolled_window_new();
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), data->flow_box);
-    gtk_overlay_add_overlay(GTK_OVERLAY(data->overlay), scrolled);
+    def populate_flowbox(self, flow_box, model):
+        for i in range(model.get_n_items()):
+            app_info = model.get_item(i)
+            if not app_info:
+                continue
+            gicon = app_info.get_icon()
+            image = Gtk.Image.new_from_gicon(gicon)
+            image.set_pixel_size(48)
+            label = Gtk.Label(label=app_info.get_display_name())
+            label.set_wrap(True)
+            label.set_justify(Gtk.Justification.CENTER)
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            box.append(image)
+            box.append(label)
+            box.set_margin_start(6)
+            box.set_margin_end(6)
+            box.set_margin_top(6)
+            box.set_margin_bottom(6)
+            box.set_halign(Gtk.Align.CENTER)
+            box.set_valign(Gtk.Align.CENTER)
+            box.set_data("app_info", app_info)
+            gesture = Gtk.GestureClick.new()
+            gesture.set_button(1)
+            gesture.connect("pressed", self.on_icon_pressed)
+            box.add_controller(gesture)
+            flow_box.append(box)
 
-    gtk_window_set_child(GTK_WINDOW(data->window), data->overlay);
+    def load_apps(self):
+        store = Gio.ListStore(item_type=Gio.AppInfo)
+        apps = Gio.AppInfo.get_all()
+        for app_info in apps:
+            if app_info.should_show():
+                store.append(app_info)
+        return store
 
-    // Handle right click
-    GtkGesture *gesture = gtk_gesture_click_new();
-    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(gesture), 3);
-    g_signal_connect(gesture, "pressed", G_CALLBACK(on_desktop_click_pressed), data);
-    gtk_widget_add_controller(data->overlay, GTK_EVENT_CONTROLLER(gesture));
+    def on_logout(self, action, param):
+        os.system("dm-tool switch-to-greeter")
 
-    // Set dark theme
-    GtkSettings *settings = gtk_settings_get_default();
-    g_object_set(settings, "gtk-application-prefer-dark-theme", TRUE, NULL);
-    g_object_set(settings, "gtk-theme-name", "Adwaita", NULL); // Or custom theme
+    def on_shutdown(self, action, param):
+        os.system("systemctl poweroff")
 
-    gtk_widget_set_visible(data->window, TRUE);
-}
+    def on_restart(self, action, param):
+        os.system("systemctl reboot")
 
-int main(int argc, char **argv) {
-    GtkApplication *app = gtk_application_new("org.blueenvironment.desktop", G_APPLICATION_DEFAULT_FLAGS);
-    DesktopData data = {0};
-    g_signal_connect(app, "activate", G_CALLBACK(activate), &data);
-    int status = g_application_run(G_APPLICATION(app), argc, argv);
-    g_object_unref(app);
-    if (data.app_list) {
-        g_object_unref(data.app_list);
-    }
-    return status;
-}
+    def show_context_menu(self, x, y):
+        menu = Gio.Menu()
+        menu.append("Logout", "app.logout")
+        menu.append("Shutdown", "app.shutdown")
+        menu.append("Restart", "app.restart")
+        popover = Gtk.PopoverMenu.new_from_model(menu)
+        popover.set_parent(self.window)
+        point = Gdk.Rectangle()
+        point.x = int(x)
+        point.y = int(y)
+        point.width = 0
+        point.height = 0
+        popover.set_pointing_to(point)
+        popover.popup()
+
+    def on_desktop_click_pressed(self, gesture, n_press, x, y):
+        if n_press != 1:
+            return
+        self.show_context_menu(x, y)
+
+if __name__ == "__main__":
+    app = BlueDesktop()
+    exit_status = app.run(sys.argv)
+    sys.exit(exit_status)
