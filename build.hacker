@@ -1,14 +1,28 @@
 // cargo
 // crystal
-// golang
 // meson
 // valac
 // python3.13
-
+// g++
+// qttools5-dev
+// qttools5-dev-tools
+// qtmultimedia5-dev
+// qtdeclarative5-dev
+// qml-module-qtquick-controls
+// qml-module-qtquick-controls2     
+// qml-module-qtgraphicaleffects
+// qt6-wayland
+// qt6-wayland-dev
+// qt6-base-dev
+// qt6-base-dev-tools
+// qt6-base-dev
+// qt6-waylandcompositor-dev
+// qt6-declarative-dev
+// qt6-tools-dev
 
 > cd source-code
 >>> cd decorations && python3.13 -m
->>> cd wm && cargo build --release
+>>> cd wm && mkdir build && cd build &&  cmake -DCMAKE_BUILD_TYPE=Release ../ && make -j$(nproc)
 >>> cd core && cargo build --release
 >>> cd CLI && crystal build src/main.cr --release && sudo mv main blue-enviroment
 >>> cd CLI && cd update && go get blue-update && go build
