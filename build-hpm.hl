@@ -1,1 +1,6 @@
+// tar
+// hpm
+// zstd
 
+> cd build-hpm
+> hpm build Blue-Enviroment
