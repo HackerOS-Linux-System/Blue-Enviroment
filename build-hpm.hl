@@ -1,6 +1,11 @@
 // tar
 // hpm
 // zstd
+// hl
 
 > cd build-hpm
+> hl compile wrapper.hl
+> cd contents
+> curl -LO https://github.com/HackerOS-Linux-System/Blue-Enviroment/releases/download/v0.2/{Blue-Enviroment,core,decorations,Desktop,launcher,shell,wm} && chmod +x Blue-Enviroment core decorations Desktop launcher shell wm
+> cd ..
 > hpm build Blue-Enviroment
