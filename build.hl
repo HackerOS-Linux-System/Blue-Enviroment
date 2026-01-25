@@ -1,36 +1,27 @@
 // cargo
 // crystal
-// meson
-// valac
-// python3.13
-// g++
-// qttools5-dev
-// qttools5-dev-tools
-// qtmultimedia5-dev
-// qtdeclarative5-dev
-// qml-module-qtquick-controls
-// qml-module-qtquick-controls2     
-// qml-module-qtgraphicaleffects
-// qt6-wayland
-// qt6-wayland-dev
-// qt6-base-dev
-// qt6-base-dev-tools
-// qt6-base-dev
-// qt6-waylandcompositor-dev
-// qt6-declarative-dev
-// qt6-tools-dev
+// npm
+! tools ^
+// libjavascriptcoregtk-4.1-dev 
+// libwebkit2gtk-4.1-dev
+// libsoup2.4-dev
+// 
+! libs ^
 
 > cd source-code
->>> cd decorations && python3.13 -m
->>> cd wm && mkdir build && cd build &&  cmake -DCMAKE_BUILD_TYPE=Release ../ && make -j$(nproc)
->>> cd core && cargo build --release
->>> cd CLI && crystal build src/main.cr --release && sudo mv main blue-enviroment
->>> cd CLI && cd update && go get blue-update && go build
->>> cd CLI && cd blue && crystal build src/main.cr --release
->>> cd shell && cargo build --release
->>> cd launcher && cargo build --release
->>> cd Desktop && python3.13 -m
-> cd Apps
->>> cd Blue-Software && meson setup build && meson compile -C build
->>> cd File-Manager && python3.13 -m
->>> cd Settings && python3.13 -m
+>>> cd fronted && npm run build
+>>> cd backendd && cargo build --release
+>>> cd launcher && crystal build src/main.cr --release
+
+! > sudo ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/javascriptcoregtk-4.1.pc /usr/lib/x86_64-linux-gnu/pkgconfig/javascriptcoregtk-4.0.pc
+! > sudo ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/webkit2gtk-4.1.pc /usr/lib/x86_64-linux-gnu/pkgconfig/webkit2gtk-4.0.pc
+! > sudo ln -s /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so
+! > sudo ln -s /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so
+! > sudo ln -s /usr/lib/x86_64-linux-gnu/libsoup-3.0.so /usr/lib/x86_64-linux-gnu/libsoup-2.4.so
+! > sudo rm /usr/lib/x86_64-linux-gnu/libsoup-2.4.so
+! > sudo ln -s /usr/lib/x86_64-linux-gnu/libsoup-3.0.so /usr/lib/x86_64-linux-gnu/libsoup-2.4.so
+! > sudo rm -f /usr/lib/x86_64-linux-gnu/libsoup-2.4.so
+! > sudo ln -s /usr/lib/x86_64-linux-gnu/libsoup-3.0.so /usr/lib/x86_64-linux-gnu/libsoup-2.4.so
+! > sudo ln -sf /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.0.so
+! > sudo ln -sf /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.0.so
+! ^^^^^^ setup if fronted build not working 
