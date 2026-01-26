@@ -1,16 +1,17 @@
 [package]
 name = "blue-backend"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-smithay = { version = "0.4", features = ["backend_winit", "renderer_gl", "wayland_frontend", "xwayland"] }
-wayland-server = "0.31"
-wayland-protocols = "0.31"
-x11rb = "0.12"
+smithay = { version = "0.3", features = ["backend_winit", "renderer_gl", "wayland_frontend", "xwayland"] }
+wayland-server = "0.30"
+wayland-protocols = "0.30"
+x11rb = "0.10"
 log = "0.4"
 env_logger = "0.10"
 slog = "2.7"
 slog-term = "2.9"
 slog-async = "2.8"
 slog-stdlog = "4.1"
+winit = "0.28"
