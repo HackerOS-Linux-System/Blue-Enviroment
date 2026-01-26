@@ -7,16 +7,26 @@ export enum AppId {
     EXPLORER = 'explorer',
     SETTINGS = 'settings',
     ABOUT = 'about',
-    // External app placeholder
+
+    // New Apps
+    BLUE_WEB = 'blue_web',
+    BLUE_EDIT = 'blue_edit',
+    BLUE_IMAGES = 'blue_images',
+    BLUE_VIDEOS = 'blue_videos',
+    BLUE_MUSIC = 'blue_music',
+    CALCULATOR = 'calculator',
+    SYSTEM_MONITOR = 'system_monitor',
+    BLUE_SCREEN = 'blue_screen',
+    BLUE_CONNECT = 'blue_connect',
+
     EXTERNAL = 'external'
 }
 
-// Represents a Linux .desktop entry
 export interface DesktopEntry {
     id: string;
     name: string;
     comment: string;
-    icon: string; // Path to icon or icon name
+    icon: string;
     exec: string;
     categories: string[];
 }
@@ -24,9 +34,9 @@ export interface DesktopEntry {
 export interface AppDefinition {
     id: AppId | string;
     title: string;
-    icon: React.ComponentType<any> | string; // Component or URL/Path
-    component?: React.ComponentType<any>; // Only for internal apps
-    isExternal?: boolean; // True if it launches a Linux process
+    icon: React.ComponentType<any> | string;
+    component?: React.ComponentType<any>;
+    isExternal?: boolean;
     defaultWidth?: number;
     defaultHeight?: number;
 }
@@ -42,26 +52,18 @@ export interface WindowState {
     isMinimized: boolean;
     isMaximized: boolean;
     zIndex: number;
-    isExternal: boolean; // If true, this is a wrapper for a Wayland surface
+    isExternal: boolean;
 }
 
 export interface UserConfig {
     wallpaper: string;
-    theme: 'dark' | 'light';
+    theme: 'dark' | 'light'; // Deprecated in favor of themeName
+    themeName: 'blue-default' | 'cyberpunk' | 'dracula' | 'light-glass';
     accentColor: string;
     displayScale: number;
-}
-
-export interface SystemState {
-    windows: WindowState[];
-    activeWindowId: string | null;
-    nextZIndex: number;
-    isStartMenuOpen: boolean;
-    isFullScreenStartOpen: boolean;
-    isControlCenterOpen: boolean;
-    isNotificationCenterOpen: boolean;
 }
 
 export interface AppProps {
     windowId: string;
 }
+
