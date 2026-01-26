@@ -13,9 +13,26 @@
   "tauri": {
     "allowlist": {
       "all": false,
+      "fs": {
+        "all": true,
+        "scope": ["$HOME/**", "/usr/share/**", "/etc/**"]
+      },
+      "path": {
+        "all": true
+      },
       "shell": {
-        "all": false,
-        "open": true
+        "all": true,
+        "open": true,
+        "sidecar": true,
+        "scope": [
+          { "name": "sh", "cmd": "sh", "args": true },
+          { "name": "shutdown", "cmd": "shutdown", "args": true },
+          { "name": "systemctl", "cmd": "systemctl", "args": true },
+          { "name": "nmcli", "cmd": "nmcli", "args": true },
+          { "name": "uname", "cmd": "uname", "args": true },
+          { "name": "amixer", "cmd": "amixer", "args": true },
+          { "name": "appimage", "cmd": "/usr/share/HackerOS/Scripts/HackerOS-Apps/Hacker-Term.AppImage", "args": true }
+        ]
       }
     },
     "bundle": {
