@@ -1,1 +1,16 @@
+name: blue-environment
+version: 0.2
 
+authors:
+  - HackerOS Team <hackeros068@gmail.com>
+
+description: |
+  Narzędzie CLI do uruchamiania Blue-Environment.
+
+crystal: ">= 1.0.0"
+
+license: MIT
+
+targets:
+  blue-environment:
+    main: src/main.cr
