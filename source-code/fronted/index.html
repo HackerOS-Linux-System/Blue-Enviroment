@@ -7,9 +7,51 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
+      :root {
+        --bg-primary: #0f172a; /* slate-900 */
+        --bg-secondary: #1e293b; /* slate-800 */
+        --text-primary: #f1f5f9; /* slate-100 */
+        --text-secondary: #94a3b8; /* slate-400 */
+        --accent: #2563eb; /* blue-600 */
+        --accent-hover: #3b82f6; /* blue-500 */
+      }
+
+      /* Theme: Cyberpunk */
+      [data-theme='cyberpunk'] {
+        --bg-primary: #09090b; /* zinc-950 */
+        --bg-secondary: #18181b; /* zinc-900 */
+        --text-primary: #e4e4e7; /* zinc-200 */
+        --text-secondary: #a1a1aa; /* zinc-400 */
+        --accent: #eab308; /* yellow-500 */
+        --accent-hover: #facc15; /* yellow-400 */
+      }
+
+      /* Theme: Dracula */
+      [data-theme='dracula'] {
+        --bg-primary: #282a36;
+        --bg-secondary: #44475a;
+        --text-primary: #f8f8f2;
+        --text-secondary: #6272a4;
+        --accent: #bd93f9;
+        --accent-hover: #ff79c6;
+      }
+
+      /* Theme: Light Glass */
+      [data-theme='light-glass'] {
+        --bg-primary: #e2e8f0; /* slate-200 */
+        --bg-secondary: #ffffff; /* white */
+        --text-primary: #0f172a; /* slate-900 */
+        --text-secondary: #64748b; /* slate-500 */
+        --accent: #0ea5e9; /* sky-500 */
+        --accent-hover: #38bdf8; /* sky-400 */
+      }
+
       body {
         font-family: 'Inter', sans-serif;
         overflow: hidden; /* Prevent body scroll for desktop feel */
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+        transition: background-color 0.3s ease, color 0.3s ease;
       }
       .font-mono {
         font-family: 'JetBrains Mono', monospace;
@@ -23,12 +65,22 @@
         background: rgba(255, 255, 255, 0.05);
       }
       ::-webkit-scrollbar-thumb {
-        background: rgba(59, 130, 246, 0.5);
+        background: var(--accent);
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: rgba(59, 130, 246, 0.7);
+        background: var(--accent-hover);
       }
+
+      /* Utility classes using vars */
+      .theme-bg-primary { background-color: var(--bg-primary); }
+      .theme-bg-secondary { background-color: var(--bg-secondary); }
+      .theme-text-primary { color: var(--text-primary); }
+      .theme-text-secondary { color: var(--text-secondary); }
+      .theme-accent { background-color: var(--accent); }
+      .theme-accent-text { color: var(--accent); }
+      .theme-border { border-color: rgba(255,255,255,0.1); }
+      [data-theme='light-glass'] .theme-border { border-color: rgba(0,0,0,0.1); }
     </style>
   <script type="importmap">
 {
@@ -39,12 +91,15 @@
     "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "path": "https://esm.sh/path@^0.12.7",
+    "fs": "https://esm.sh/fs@^0.0.1-security",
+    "@tauri-apps/api/": "https://esm.sh/@tauri-apps/api@^2.9.1/"
   }
 }
 </script>
 </head>
-  <body class="bg-black text-white h-screen w-screen overflow-hidden selection:bg-blue-500 selection:text-white">
+  <body class="h-screen w-screen overflow-hidden selection:bg-blue-500 selection:text-white">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
