@@ -4,14 +4,7 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-smithay = { version = "0.3", features = ["backend_winit", "renderer_gl", "wayland_frontend", "xwayland"] }
-wayland-server = "0.30"
-wayland-protocols = "0.30"
-x11rb = "0.10"
+# Używamy wersji git, ponieważ API użyte w kodzie (makra delegate_*) jest dostępne w wersji deweloperskiej.
+smithay = { git = "https://github.com/Smithay/smithay.git", features = ["backend_winit", "renderer_gl", "wayland_frontend", "xwayland"] }
 log = "0.4"
 env_logger = "0.10"
-slog = "2.7"
-slog-term = "2.9"
-slog-async = "2.8"
-slog-stdlog = "4.1"
-winit = "0.28"
