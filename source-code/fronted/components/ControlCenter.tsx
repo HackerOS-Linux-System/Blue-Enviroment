@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, Bluetooth, Volume2, Sun, Moon, Airplay, Signal, BatteryCharging } from 'lucide-react';
+import { Wifi, Bluetooth, Volume2, Sun, Moon, Airplay, Signal, BatteryCharging, ChevronRight } from 'lucide-react';
 import { SystemBridge } from '../utils/systemBridge';
 
 interface ControlCenterProps {
     isOpen: boolean;
+    onOpenSettings: () => void;
 }
 
 const Slider = ({ icon: Icon, value, onChange }: any) => (
-    <div className="flex items-center gap-3 bg-slate-800/50 p-3 rounded-2xl border border-white/5">
+    <div className="flex items-center gap-3 bg-slate-800 p-3 rounded-2xl border border-white/5">
     <Icon size={18} className="text-slate-400" />
     <input
     type="range"
@@ -20,7 +21,7 @@ const Slider = ({ icon: Icon, value, onChange }: any) => (
     </div>
 );
 
-const ControlCenter: React.FC<ControlCenterProps> = ({ isOpen }) => {
+const ControlCenter: React.FC<ControlCenterProps> = ({ isOpen, onOpenSettings }) => {
     const [wifi, setWifi] = useState(true);
     const [bluetooth, setBluetooth] = useState(true);
     const [darkMode, setDarkMode] = useState(true);
@@ -49,7 +50,8 @@ const ControlCenter: React.FC<ControlCenterProps> = ({ isOpen }) => {
         SystemBridge.setVolume(val);
     };
 
-    const toggleWifi = () => {
+    const toggleWifi = (e: React.MouseEvent) => {
+        e.stopPropagation();
         setWifi(!wifi);
         SystemBridge.toggleWifi(!wifi);
     };
@@ -57,27 +59,31 @@ const ControlCenter: React.FC<ControlCenterProps> = ({ isOpen }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="absolute top-16 right-4 w-80 bg-slate-900/80 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-5 duration-200">
+        <div className="absolute top-16 right-4 w-80 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-5 duration-200">
 
         {/* Toggles Grid */}
         <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="grid grid-rows-2 gap-3">
-        <div className={`col-span-1 p-3 rounded-2xl flex items-center gap-3 transition-colors cursor-pointer ${wifi ? 'bg-blue-600 text-white' : 'bg-slate-800/80 text-slate-400'}`} onClick={toggleWifi}>
-        <div className="bg-white/20 p-2 rounded-full"><Wifi size={16} /></div>
-        <div>
+        <div className={`col-span-1 p-3 rounded-2xl flex items-center gap-3 transition-colors cursor-pointer group ${wifi ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`} onClick={onOpenSettings}>
+        <div className="bg-white/20 p-2 rounded-full" onClick={toggleWifi}><Wifi size={16} /></div>
+        <div className="flex-1 min-w-0">
         <div className="text-xs font-bold">Wi-Fi</div>
-        <div className="text-[10px] opacity-70">{wifi ? 'BlueNet 5G' : 'Off'}</div>
+        <div className="text-[10px] opacity-70 truncate">{wifi ? 'BlueNet 5G' : 'Off'}</div>
         </div>
+        <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
-        <div className={`col-span-1 p-3 rounded-2xl flex items-center gap-3 transition-colors cursor-pointer ${bluetooth ? 'bg-blue-600 text-white' : 'bg-slate-800/80 text-slate-400'}`} onClick={() => setBluetooth(!bluetooth)}>
-        <div className="bg-white/20 p-2 rounded-full"><Bluetooth size={16} /></div>
-        <div>
+
+        <div className={`col-span-1 p-3 rounded-2xl flex items-center gap-3 transition-colors cursor-pointer group ${bluetooth ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`} onClick={onOpenSettings}>
+        <div className="bg-white/20 p-2 rounded-full" onClick={(e) => { e.stopPropagation(); setBluetooth(!bluetooth); }}><Bluetooth size={16} /></div>
+        <div className="flex-1 min-w-0">
         <div className="text-xs font-bold">Bluetooth</div>
-        <div className="text-[10px] opacity-70">{bluetooth ? 'On' : 'Off'}</div>
+        <div className="text-[10px] opacity-70 truncate">{bluetooth ? 'On' : 'Off'}</div>
+        </div>
+        <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
         </div>
-        </div>
-        <div className="bg-slate-800/50 rounded-2xl p-3 flex flex-col justify-between">
+
+        <div className="bg-slate-800 rounded-2xl p-3 flex flex-col justify-between">
         <div className="flex items-center justify-between text-slate-400">
         <Airplay size={16} />
         <span className="text-[10px]">Media</span>
@@ -97,7 +103,7 @@ const ControlCenter: React.FC<ControlCenterProps> = ({ isOpen }) => {
         <span className="text-xs font-bold">{darkMode ? "Dark" : "Light"}</span>
         </button>
 
-        <div className="flex-1 bg-slate-800/50 rounded-2xl p-3 flex flex-col justify-center gap-1">
+        <div className="flex-1 bg-slate-800 rounded-2xl p-3 flex flex-col justify-center gap-1">
         <div className="text-xs text-slate-400 font-medium">Battery</div>
         <div className="text-xl font-bold text-green-400 flex items-center gap-2">
         {battery}% <BatteryCharging size={16} />
