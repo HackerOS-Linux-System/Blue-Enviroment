@@ -18,6 +18,7 @@ export enum AppId {
     SYSTEM_MONITOR = 'system_monitor',
     BLUE_SCREEN = 'blue_screen',
     BLUE_CONNECT = 'blue_connect',
+    BLUE_SOFTWARE = 'blue_software',
 
     EXTERNAL = 'external'
 }
@@ -55,15 +56,51 @@ export interface WindowState {
     isExternal: boolean;
 }
 
+export interface CustomTheme {
+    id: string;
+    name: string;
+    cssContent: string; // The raw CSS string
+    path?: string; // File path on disk
+}
+
 export interface UserConfig {
     wallpaper: string;
-    theme: 'dark' | 'light'; // Deprecated in favor of themeName
-    themeName: 'blue-default' | 'cyberpunk' | 'dracula' | 'light-glass';
+    themeName: 'blue-default' | 'cyberpunk' | 'dracula' | 'light-glass' | string; // Can be a custom theme ID
     accentColor: string;
     displayScale: number;
+    barPosition: 'top' | 'bottom';
 }
 
 export interface AppProps {
     windowId: string;
 }
 
+export type PackageSource = 'apt' | 'flatpak' | 'snap' | 'brew' | 'manual';
+
+export interface SoftwarePackage {
+    id: string;
+    packageId: string; // The real package name (e.g., 'firefox', 'org.videolan.VLC')
+    source: PackageSource;
+    name: string;
+    description: string;
+    version: string;
+    category: 'Development' | 'Productivity' | 'Multimedia' | 'System' | 'Games';
+    icon?: any;
+    installed: boolean;
+    size: string;
+    author: string;
+}
+
+export interface WifiNetwork {
+    ssid: string;
+    signal: number;
+    secure: boolean;
+    in_use: boolean;
+}
+
+export interface BluetoothDevice {
+    name: string;
+    type?: string;
+    mac: string;
+    connected: boolean;
+}
