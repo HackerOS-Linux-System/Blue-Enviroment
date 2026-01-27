@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, Bluetooth, Volume2, Sun, Moon, Airplay, Signal, BatteryCharging, ChevronRight } from 'lucide-react';
+import { Wifi, Bluetooth, Volume2, Sun, Moon, Airplay, Signal, BatteryCharging, ChevronRight, Battery } from 'lucide-react';
 import { SystemBridge } from '../utils/systemBridge';
 
 interface ControlCenterProps {
@@ -22,21 +22,49 @@ const Slider = ({ icon: Icon, value, onChange }: any) => (
 );
 
 const ControlCenter: React.FC<ControlCenterProps> = ({ isOpen, onOpenSettings }) => {
-    const [wifi, setWifi] = useState(true);
-    const [bluetooth, setBluetooth] = useState(true);
+    // Local state that reflects system state
+    const [wifiEnabled, setWifiEnabled] = useState(false);
+    const [wifiSSID, setWifiSSID] = useState('Disconnected');
+
+    const [btEnabled, setBtEnabled] = useState(false);
+    const [btConnectedDevice, setBtConnectedDevice] = useState<string | null>(null);
+
     const [darkMode, setDarkMode] = useState(true);
-    const [brightness, setBrightness] = useState(80);
-    const [volume, setVolume] = useState(60);
-    const [battery, setBattery] = useState(85);
+
+    // Real stats
+    const [brightness, setBrightness] = useState(50);
+    const [volume, setVolume] = useState(50);
+    const [battery, setBattery] = useState(0);
+    const [isCharging, setIsCharging] = useState(false);
+
+    const syncState = async () => {
+        // 1. Get General Stats
+        const stats = await SystemBridge.getSystemStats();
+        setBattery(stats.battery);
+        setIsCharging(stats.is_charging);
+        setVolume(stats.volume);
+        setBrightness(stats.brightness);
+
+        // 2. Determine Wifi State
+        const nets = await SystemBridge.getWifiNetworks();
+        // If we have networks and stats say we have an SSID or are just enabled
+        const isWifiOn = stats.wifi_ssid !== 'Off';
+        setWifiEnabled(isWifiOn);
+        setWifiSSID(isWifiOn ? stats.wifi_ssid : 'Off');
+
+        // 3. Determine Bluetooth State
+        const devices = await SystemBridge.getBluetoothDevices();
+        const connected = devices.find(d => d.connected);
+        setBtEnabled(true); // Simplified: assume BT radio is on if we can scan
+        setBtConnectedDevice(connected ? connected.name : null);
+    };
 
     useEffect(() => {
         if (isOpen) {
-            // Poll system stats when open
-            SystemBridge.getSystemStats().then(stats => {
-                setBattery(stats.battery);
-                setBrightness(stats.brightness);
-                setVolume(stats.volume);
-            });
+            syncState();
+            // Poll for updates while open
+            const interval = setInterval(syncState, 2000);
+            return () => clearInterval(interval);
         }
     }, [isOpen]);
 
@@ -50,34 +78,48 @@ const ControlCenter: React.FC<ControlCenterProps> = ({ isOpen, onOpenSettings })
         SystemBridge.setVolume(val);
     };
 
-    const toggleWifi = (e: React.MouseEvent) => {
+    const toggleWifi = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        setWifi(!wifi);
-        SystemBridge.toggleWifi(!wifi);
+        const newState = !wifiEnabled;
+        setWifiEnabled(newState);
+        setWifiSSID(newState ? 'Searching...' : 'Off');
+        await SystemBridge.toggleWifi(newState);
+        syncState();
+    };
+
+    const toggleBt = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        // In this mock, toggling BT button just toggles connection state of first device as a demo
+        // or conceptually toggles the radio
+        setBtEnabled(!btEnabled);
+        // await SystemBridge.setBluetoothState(!btEnabled);
     };
 
     if (!isOpen) return null;
 
     return (
-        <div className="absolute top-16 right-4 w-80 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-5 duration-200">
+        <div
+        onClick={(e) => e.stopPropagation()}
+        className="absolute top-16 right-4 w-80 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-5 duration-200 pointer-events-auto"
+        >
 
         {/* Toggles Grid */}
         <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="grid grid-rows-2 gap-3">
-        <div className={`col-span-1 p-3 rounded-2xl flex items-center gap-3 transition-colors cursor-pointer group ${wifi ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`} onClick={onOpenSettings}>
+        <div className={`col-span-1 p-3 rounded-2xl flex items-center gap-3 transition-colors cursor-pointer group ${wifiEnabled ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`} onClick={onOpenSettings}>
         <div className="bg-white/20 p-2 rounded-full" onClick={toggleWifi}><Wifi size={16} /></div>
         <div className="flex-1 min-w-0">
         <div className="text-xs font-bold">Wi-Fi</div>
-        <div className="text-[10px] opacity-70 truncate">{wifi ? 'BlueNet 5G' : 'Off'}</div>
+        <div className="text-[10px] opacity-70 truncate">{wifiSSID}</div>
         </div>
         <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
 
-        <div className={`col-span-1 p-3 rounded-2xl flex items-center gap-3 transition-colors cursor-pointer group ${bluetooth ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`} onClick={onOpenSettings}>
-        <div className="bg-white/20 p-2 rounded-full" onClick={(e) => { e.stopPropagation(); setBluetooth(!bluetooth); }}><Bluetooth size={16} /></div>
+        <div className={`col-span-1 p-3 rounded-2xl flex items-center gap-3 transition-colors cursor-pointer group ${btEnabled ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`} onClick={onOpenSettings}>
+        <div className="bg-white/20 p-2 rounded-full" onClick={toggleBt}><Bluetooth size={16} /></div>
         <div className="flex-1 min-w-0">
         <div className="text-xs font-bold">Bluetooth</div>
-        <div className="text-[10px] opacity-70 truncate">{bluetooth ? 'On' : 'Off'}</div>
+        <div className="text-[10px] opacity-70 truncate">{btConnectedDevice || (btEnabled ? 'On' : 'Off')}</div>
         </div>
         <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
@@ -105,10 +147,10 @@ const ControlCenter: React.FC<ControlCenterProps> = ({ isOpen, onOpenSettings })
 
         <div className="flex-1 bg-slate-800 rounded-2xl p-3 flex flex-col justify-center gap-1">
         <div className="text-xs text-slate-400 font-medium">Battery</div>
-        <div className="text-xl font-bold text-green-400 flex items-center gap-2">
-        {battery}% <BatteryCharging size={16} />
+        <div className={`text-xl font-bold flex items-center gap-2 ${battery < 20 ? 'text-red-400' : 'text-green-400'}`}>
+        {Math.round(battery)}% {isCharging ? <BatteryCharging size={16} /> : <Battery size={16} />}
         </div>
-        <div className="text-[10px] text-slate-500">Estimating...</div>
+        <div className="text-[10px] text-slate-500">{isCharging ? 'Charging' : 'Discharging'}</div>
         </div>
         </div>
 
