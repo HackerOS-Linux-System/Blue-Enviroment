@@ -357,7 +357,6 @@ fn connect_wifi_real(ssid: String, password: String) -> Result<String, String> {
 #[tauri::command]
 fn get_bluetooth_devices_real() -> Vec<BluetoothDevice> {
     // bluetoothctl devices
-    // Output: Device XX:XX:XX:XX:XX:XX Name
     let output = Command::new("bluetoothctl")
     .arg("devices")
     .output();
@@ -389,6 +388,74 @@ fn get_bluetooth_devices_real() -> Vec<BluetoothDevice> {
     devices
 }
 
+// --- PACKAGE MANAGEMENT COMMANDS ---
+
+#[tauri::command]
+fn check_package_installed(package_id: String, source: String) -> bool {
+    let output = match source.as_str() {
+        "apt" => {
+            // dpkg -s package_name
+            Command::new("dpkg").arg("-s").arg(&package_id).output()
+        },
+        "flatpak" => {
+            // flatpak list --app --columns=application
+            Command::new("sh").arg("-c").arg(format!("flatpak list --app --columns=application | grep -q '^{}$'", package_id)).output()
+        },
+        "snap" => {
+            // snap list package_name
+            Command::new("snap").arg("list").arg(&package_id).output()
+        },
+        "brew" => {
+            // brew list --versions package_name
+            Command::new("brew").arg("list").arg("--versions").arg(&package_id).output()
+        },
+        _ => return false,
+    };
+
+    match output {
+        Ok(o) => o.status.success(),
+        Err(_) => false
+    }
+}
+
+#[tauri::command]
+fn manage_package(operation: String, package_id: String, source: String) -> Result<String, String> {
+    // operation: "install" or "remove"
+    // source: "apt", "flatpak", "snap", "brew"
+
+    let cmd = match (source.as_str(), operation.as_str()) {
+        ("apt", "install") => format!("pkexec apt-get install -y {}", package_id),
+        ("apt", "remove") => format!("pkexec apt-get remove -y {}", package_id),
+
+        ("flatpak", "install") => format!("flatpak install -y flathub {}", package_id),
+        ("flatpak", "remove") => format!("flatpak uninstall -y {}", package_id),
+
+        ("snap", "install") => format!("pkexec snap install {}", package_id),
+        ("snap", "remove") => format!("pkexec snap remove {}", package_id),
+
+        ("brew", "install") => format!("brew install {}", package_id),
+        ("brew", "remove") => format!("brew uninstall {}", package_id),
+
+        _ => return Err("Unsupported operation/source".to_string()),
+    };
+
+    // We use pkexec for gui prompt for apt/snap, or just standard commands.
+    // For this to work in Tauri, better to spawn it and wait, or return output.
+    // Since installing takes time, we'll try to execute and return output.
+
+    let output = Command::new("sh")
+    .arg("-c")
+    .arg(&cmd)
+    .output()
+    .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 
 fn main() {
     tauri::Builder::default()
@@ -408,7 +475,9 @@ fn main() {
         load_config,
         get_wifi_networks_real,
         connect_wifi_real,
-        get_bluetooth_devices_real
+        get_bluetooth_devices_real,
+        check_package_installed,
+        manage_package
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
