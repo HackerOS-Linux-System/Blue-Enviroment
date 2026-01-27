@@ -1,4 +1,4 @@
-import { DesktopEntry, UserConfig } from '../types';
+import { DesktopEntry, UserConfig, CustomTheme, SoftwarePackage, WifiNetwork, BluetoothDevice } from '../types';
 
 // @ts-ignore
 const isTauri = typeof window !== 'undefined' && window.__TAURI__ !== undefined;
@@ -8,6 +8,7 @@ const invoke = isTauri ? window.__TAURI__.invoke : async (cmd: string) => { cons
 
 // --- Stateful Mock Storage ---
 let mockWifiState = {
+    enabled: true,
     connectedSSID: '',
     networks: [
         { ssid: "Home Network 5G", signal: 95, secure: true },
@@ -23,6 +24,37 @@ let mockBtDevices = [
 { name: "Logitech MX Master", type: "mouse", mac: "AA:BB:CC:DD:EE", connected: true },
 { name: "iPhone 15 Pro", type: "phone", mac: "11:22:33:44:55", connected: false },
 ];
+
+let mockSystemState = {
+    volume: 65,
+    brightness: 80,
+    battery: 74,
+    isCharging: false
+};
+
+// Mock Package Database (Catalog)
+// The backend "check_package_installed" will verify these against the real system.
+let catalogPackages: SoftwarePackage[] = [
+    { id: 'firefox', packageId: 'firefox', source: 'apt', name: 'Firefox', description: 'Fast, private and ethical web browser.', version: 'Latest', category: 'Productivity', installed: false, size: '85 MB', author: 'Mozilla' },
+{ id: 'vscode', packageId: 'code', source: 'snap', name: 'Visual Studio Code', description: 'Code editing. Redefined.', version: 'Latest', category: 'Development', installed: false, size: '120 MB', author: 'Microsoft' },
+{ id: 'vlc', packageId: 'vlc', source: 'apt', name: 'VLC Media Player', description: 'The ultimate media player.', version: '3.0+', category: 'Multimedia', installed: false, size: '45 MB', author: 'VideoLAN' },
+{ id: 'gimp', packageId: 'org.gimp.GIMP', source: 'flatpak', name: 'GIMP', description: 'GNU Image Manipulation Program.', version: '2.10', category: 'Multimedia', installed: false, size: '250 MB', author: 'GIMP Team' },
+{ id: 'steam', packageId: 'steam', source: 'apt', name: 'Steam', description: 'Ultimate destination for playing games.', version: '1.0', category: 'Games', installed: false, size: '15 MB', author: 'Valve' },
+{ id: 'obs', packageId: 'com.obsproject.Studio', source: 'flatpak', name: 'OBS Studio', description: 'Free software for video recording.', version: '30.0', category: 'Multimedia', installed: false, size: '150 MB', author: 'OBS Project' },
+{ id: 'discord', packageId: 'discord', source: 'snap', name: 'Discord', description: 'Talk, chat, hang out.', version: 'Latest', category: 'Productivity', installed: false, size: '90 MB', author: 'Discord Inc.' },
+{ id: 'python', packageId: 'python3', source: 'apt', name: 'Python 3', description: 'High-level programming language.', version: '3.12', category: 'Development', installed: false, size: '40 MB', author: 'Python Foundation' },
+{ id: 'btop', packageId: 'btop', source: 'brew', name: 'Btop', description: 'Resource monitor that shows usage and stats.', version: '1.3', category: 'System', installed: false, size: '2 MB', author: 'Aristocratos' },
+{ id: 'blender', packageId: 'org.blender.Blender', source: 'flatpak', name: 'Blender', description: '3D creation suite.', version: '4.0', category: 'Multimedia', installed: false, size: '300 MB', author: 'Blender Foundation' },
+];
+
+// Battery Drain Simulation
+setInterval(() => {
+    if (!mockSystemState.isCharging && mockSystemState.battery > 5) {
+        mockSystemState.battery -= 1;
+    } else if (mockSystemState.isCharging && mockSystemState.battery < 100) {
+        mockSystemState.battery += 5;
+    }
+}, 30000);
 
 export const SystemBridge = {
     getAllApps: async (): Promise<DesktopEntry[]> => {
@@ -41,15 +73,17 @@ export const SystemBridge = {
 
     getSystemStats: async () => {
         if (isTauri) return await invoke('get_system_stats');
+
+        // Use shared mock state
         return {
-            cpu: 15,
+            cpu: Math.random() * 20 + 5, // fluctuate
             ram: 45,
-            battery: 82,
-            isCharging: false,
-            wifiSSID: mockWifiState.connectedSSID || 'Disconnected',
-            volume: 60,
-            brightness: 80,
-            kernel: 'WebKernel 1.0'
+            battery: mockSystemState.battery,
+            isCharging: mockSystemState.isCharging,
+            wifi_ssid: mockWifiState.enabled ? (mockWifiState.connectedSSID || 'Disconnected') : 'Off',
+            volume: mockSystemState.volume,
+            brightness: mockSystemState.brightness,
+            kernel: 'HackerOS Kernel 6.6'
         };
     },
 
@@ -109,27 +143,39 @@ export const SystemBridge = {
         }
         return loaded || {
             wallpaper: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop",
-            theme: 'dark',
             themeName: 'blue-default',
             accentColor: 'blue',
-            displayScale: 1
+            displayScale: 1,
+            barPosition: 'top'
         };
     },
 
-    // --- Networking & Bluetooth (Hybrid Real/Mock) ---
-
-    getWifiNetworks: async () => {
-        if (isTauri) {
-            try {
-                return await invoke('get_wifi_networks_real');
-            } catch(e) {
-                console.warn("Failed to get real wifi, falling back to empty");
-                return [];
+    getCustomThemes: async (): Promise<CustomTheme[]> => {
+        if (isTauri) return [];
+        return [
+            {
+                id: 'custom:red-alert',
+                name: 'Red Alert (Custom)',
+                cssContent: `:root { --bg-primary: #1a0000; --bg-secondary: #330000; --text-primary: #ffcccc; --text-secondary: #cc8888; --accent: #ff0000; --accent-hover: #cc0000; }`
+            },
+            {
+                id: 'custom:matrix',
+                name: 'Matrix (Custom)',
+                cssContent: `:root { --bg-primary: #000000; --bg-secondary: #0a1f0a; --text-primary: #00ff00; --text-secondary: #008f00; --accent: #00ff00; --accent-hover: #00cc00; } body { font-family: 'JetBrains Mono', monospace; }`
             }
+        ];
+    },
+
+    // --- Networking & Bluetooth ---
+
+    getWifiNetworks: async (): Promise<WifiNetwork[]> => {
+        if (isTauri) {
+            try { return await invoke('get_wifi_networks_real'); } catch(e) { return []; }
         }
 
-        // Simulate scanning delay and stateful connection
         await new Promise(r => setTimeout(r, 500));
+        if (!mockWifiState.enabled) return [];
+
         return mockWifiState.networks.map(n => ({
             ...n,
             in_use: n.ssid === mockWifiState.connectedSSID
@@ -139,28 +185,29 @@ export const SystemBridge = {
     connectWifi: async (ssid: string, pass: string) => {
         if (isTauri) return await invoke('connect_wifi_real', { ssid, password: pass });
 
-        // Mock connection logic
         console.log(`Simulating connection to ${ssid}`);
-        await new Promise(r => setTimeout(r, 1500)); // Fake connection delay
+        await new Promise(r => setTimeout(r, 1000));
         mockWifiState.connectedSSID = ssid;
         return true;
     },
 
-    getBluetoothDevices: async () => {
-        if (isTauri) {
-            try {
-                return await invoke('get_bluetooth_devices_real');
-            } catch(e) {
-                return [];
-            }
+    toggleWifi: async (enabled: boolean) => {
+        if (isTauri) await invoke('launch_process', { command: `nmcli radio wifi ${enabled ? 'on' : 'off'}` });
+        else {
+            mockWifiState.enabled = enabled;
+            if (!enabled) mockWifiState.connectedSSID = '';
         }
+    },
 
+    getBluetoothDevices: async (): Promise<BluetoothDevice[]> => {
+        if (isTauri) {
+            try { return await invoke('get_bluetooth_devices_real'); } catch(e) { return []; }
+        }
         await new Promise(r => setTimeout(r, 600));
         return mockBtDevices;
     },
 
     toggleBluetoothDevice: async (mac: string) => {
-        // In web mode, toggle the mock state
         const dev = mockBtDevices.find(d => d.mac === mac);
         if(dev) {
             dev.connected = !dev.connected;
@@ -169,14 +216,75 @@ export const SystemBridge = {
         return false;
     },
 
-    setBrightness: async (level: number) => {},
+    setBluetoothState: async (enabled: boolean) => {
+        // Simplification for mock: if disabled, disconnect all
+        if (!enabled) {
+            mockBtDevices.forEach(d => d.connected = false);
+        }
+        return true;
+    },
+
+    // --- Hardware Control ---
+    setBrightness: async (level: number) => {
+        mockSystemState.brightness = level;
+        // In real backend call brightnessctl or xrandr
+    },
+
     setVolume: async (level: number) => {
+        mockSystemState.volume = level;
         if (isTauri) await invoke('launch_process', { command: `amixer set Master ${level}%` });
     },
-    toggleWifi: async (enabled: boolean) => {
-        if (isTauri) await invoke('launch_process', { command: `nmcli radio wifi ${enabled ? 'on' : 'off'}` });
-        else {
-            if (!enabled) mockWifiState.connectedSSID = '';
-        }
+
+    // --- Package Management (Blue Software) ---
+
+    getPackagesCatalog: async (): Promise<SoftwarePackage[]> => {
+        // Returns the static catalog definition.
+        // The status (installed) will be updated by checkPackageStatus
+        return [...catalogPackages];
     },
+
+    checkPackageStatus: async (pkg: SoftwarePackage): Promise<boolean> => {
+        if (isTauri) {
+            try {
+                return await invoke('check_package_installed', { packageId: pkg.packageId, source: pkg.source });
+            } catch(e) {
+                console.error("Failed to check status", e);
+                return false;
+            }
+        }
+        // Mock logic
+        return pkg.installed;
+    },
+
+    installPackage: async (pkg: SoftwarePackage): Promise<boolean> => {
+        if (isTauri) {
+            try {
+                await invoke('manage_package', { operation: 'install', packageId: pkg.packageId, source: pkg.source });
+                return true;
+            } catch (e) {
+                console.error("Install failed", e);
+                return false;
+            }
+        }
+        // Mock
+        await new Promise(r => setTimeout(r, 2000));
+        pkg.installed = true;
+        return true;
+    },
+
+    uninstallPackage: async (pkg: SoftwarePackage): Promise<boolean> => {
+        if (isTauri) {
+            try {
+                await invoke('manage_package', { operation: 'remove', packageId: pkg.packageId, source: pkg.source });
+                return true;
+            } catch (e) {
+                console.error("Remove failed", e);
+                return false;
+            }
+        }
+        // Mock
+        await new Promise(r => setTimeout(r, 1500));
+        pkg.installed = false;
+        return true;
+    }
 };
