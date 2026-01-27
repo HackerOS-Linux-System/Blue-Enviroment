@@ -19,7 +19,10 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ isOpen, onClose }
     if (!isOpen) return null;
 
     return (
-        <div className="absolute top-16 right-4 bottom-4 w-96 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl z-40 animate-in slide-in-from-right-10 duration-300 flex flex-col overflow-hidden">
+        <div
+        onClick={(e) => e.stopPropagation()}
+        className="absolute top-16 right-4 bottom-4 w-96 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl z-40 animate-in slide-in-from-right-10 duration-300 flex flex-col overflow-hidden pointer-events-auto"
+        >
         <div className="p-5 border-b border-white/5 flex items-center justify-between">
         <h2 className="font-semibold text-lg text-white">System Status</h2>
         <button onClick={onClose} className="text-slate-400 hover:text-white bg-white/5 p-1 rounded-full"><X size={16} /></button>
