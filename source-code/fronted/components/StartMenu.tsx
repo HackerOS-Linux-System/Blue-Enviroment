@@ -18,10 +18,9 @@ const StartMenu: React.FC<StartMenuProps> = ({ isOpen, isFullScreen, onOpenApp, 
     const [showPowerMenu, setShowPowerMenu] = useState(false);
 
     useEffect(() => {
+        // Only fetch apps once on mount, not every time the menu opens
         SystemBridge.getAllApps().then(setExternalApps);
     }, []);
-
-    if (!isOpen) return null;
 
     const internalAppsList = Object.values(APPS);
     const filteredInternal = internalAppsList.filter(app => app.title.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -43,9 +42,6 @@ const StartMenu: React.FC<StartMenuProps> = ({ isOpen, isFullScreen, onOpenApp, 
         <button onClick={() => SystemBridge.powerAction('suspend')} className="flex items-center gap-3 p-2 hover:bg-white/10 rounded-lg transition-colors text-left text-sm text-slate-200">
         <Moon size={16} /> Sleep
         </button>
-        <button onClick={() => SystemBridge.powerAction('hibernate')} className="flex items-center gap-3 p-2 hover:bg-white/10 rounded-lg transition-colors text-left text-sm text-slate-200">
-        <HardDrive size={16} /> Hibernate
-        </button>
         <div className="h-px bg-white/10 my-1"></div>
         <button onClick={() => SystemBridge.powerAction('logout')} className="flex items-center gap-3 p-2 hover:bg-white/10 rounded-lg transition-colors text-left text-sm text-slate-200">
         <LogOut size={16} /> Log Out
@@ -53,10 +49,14 @@ const StartMenu: React.FC<StartMenuProps> = ({ isOpen, isFullScreen, onOpenApp, 
         </div>
     );
 
-    // FULL SCREEN
+    // FULL SCREEN MODE
     if (isFullScreen) {
+        if (!isOpen) return null;
         return (
-            <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-xl z-40 flex flex-col items-center justify-start pt-24 animate-in fade-in zoom-in-95 duration-200" onClick={onClose}>
+            <div
+            className="absolute inset-0 bg-slate-900/95 backdrop-blur-xl z-40 flex flex-col items-center justify-start pt-24 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto"
+            onClick={onClose}
+            >
             <div className="w-full max-w-4xl px-4" onClick={e => e.stopPropagation()}>
             <div className="relative mb-12">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
@@ -93,7 +93,14 @@ const StartMenu: React.FC<StartMenuProps> = ({ isOpen, isFullScreen, onOpenApp, 
 
     // COMPACT MODE
     return (
-        <div className="absolute top-14 left-3 w-80 bg-slate-900/95 backdrop-blur-md border border-white/10 rounded-3xl shadow-2xl overflow-visible z-50 flex flex-col animate-in fade-in slide-in-from-top-5 duration-200">
+        <div
+        onClick={(e) => e.stopPropagation()}
+        className={`absolute top-14 left-3 w-80 bg-slate-900/95 backdrop-blur-md border border-white/10 rounded-3xl shadow-2xl overflow-visible z-50 flex flex-col transition-all duration-200 ease-in-out ${
+            isOpen
+            ? 'opacity-100 translate-y-0 scale-100 visible pointer-events-auto'
+            : 'opacity-0 -translate-y-4 scale-95 invisible pointer-events-none'
+        }`}
+        >
 
         {/* Profile */}
         <div className="p-4 flex items-center justify-between border-b border-white/5 bg-slate-800/50">
@@ -152,5 +159,5 @@ const StartMenu: React.FC<StartMenuProps> = ({ isOpen, isFullScreen, onOpenApp, 
         </div>
     );
 };
-import { HardDrive } from 'lucide-react';
+
 export default StartMenu;
