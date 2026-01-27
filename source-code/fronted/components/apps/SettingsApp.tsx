@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Monitor, Wifi, Bluetooth, Volume2, Image as ImageIcon, Info, User, Palette, Check, RefreshCw, Lock, Unlock, Loader2 } from 'lucide-react';
-import { AppProps, UserConfig } from '../../types';
+import { Monitor, Wifi, Bluetooth, Volume2, Image as ImageIcon, Info, User, Palette, Check, RefreshCw, Lock, Unlock, Loader2, LayoutPanelTop, LayoutPanelLeft, FileCode } from 'lucide-react';
+import { AppProps, UserConfig, CustomTheme } from '../../types';
 import { SystemBridge } from '../../utils/systemBridge';
 import { THEMES } from '../../constants';
 
-// Moved outside to prevent re-mounting on every render
 const TabButton = ({ id, icon: Icon, label, isActive, onClick }: any) => (
     <button
     onClick={onClick}
@@ -21,7 +20,8 @@ const TabButton = ({ id, icon: Icon, label, isActive, onClick }: any) => (
 const SettingsApp: React.FC<AppProps> = () => {
     const [config, setConfig] = useState<UserConfig | null>(null);
     const [wallpapers, setWallpapers] = useState<string[]>([]);
-    const [activeTab, setActiveTab] = useState('display');
+    const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
+    const [activeTab, setActiveTab] = useState('personalization');
 
     // Network State
     const [networks, setNetworks] = useState<any[]>([]);
@@ -32,6 +32,7 @@ const SettingsApp: React.FC<AppProps> = () => {
     useEffect(() => {
         SystemBridge.loadConfig().then(setConfig);
         SystemBridge.getWallpapers().then(setWallpapers);
+        SystemBridge.getCustomThemes().then(setCustomThemes);
     }, []);
 
     const handleSave = (newConfig: Partial<UserConfig>) => {
@@ -51,9 +52,7 @@ const SettingsApp: React.FC<AppProps> = () => {
     const handleConnectWifi = async (ssid: string) => {
         setConnectingTo(ssid);
         try {
-            // Pass dummy password for mock
             await SystemBridge.connectWifi(ssid, "password");
-            // Re-scan to update UI state (show 'Connected')
             await scanNetworks();
         } catch (e) {
             alert("Connection failed");
@@ -87,7 +86,6 @@ const SettingsApp: React.FC<AppProps> = () => {
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <h2 className="text-2xl font-bold theme-text-primary">Display & Appearance</h2>
 
-                    {/* Wallpaper Section */}
                     <div className="theme-bg-secondary p-6 rounded-2xl theme-border border">
                     <label className="block text-sm font-medium theme-text-secondary mb-4 flex items-center gap-2">
                     <ImageIcon size={16} className="theme-accent-text" /> Wallpaper
@@ -107,14 +105,49 @@ const SettingsApp: React.FC<AppProps> = () => {
                     </div>
                 );
 
+            case 'bar':
+                return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <h2 className="text-2xl font-bold theme-text-primary">Dock & Bar</h2>
+
+                    <div className="theme-bg-secondary p-6 rounded-2xl theme-border border">
+                    <label className="block text-sm font-medium theme-text-secondary mb-4 flex items-center gap-2">
+                    <LayoutPanelTop size={16} className="theme-accent-text" /> Bar Position
+                    </label>
+                    <div className="grid grid-cols-2 gap-4">
+                    <button
+                    onClick={() => handleSave({ barPosition: 'top' })}
+                    className={`p-6 rounded-xl border flex flex-col items-center gap-3 transition-all ${config.barPosition === 'top' ? 'bg-blue-600/20 border-blue-500' : 'theme-bg-primary theme-border hover:theme-bg-secondary'}`}
+                    >
+                    <div className="w-full h-20 bg-slate-900 rounded-lg border border-white/10 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 right-0 h-3 bg-blue-500"></div>
+                    </div>
+                    <span className="font-bold theme-text-primary">Top</span>
+                    </button>
+
+                    <button
+                    onClick={() => handleSave({ barPosition: 'bottom' })}
+                    className={`p-6 rounded-xl border flex flex-col items-center gap-3 transition-all ${config.barPosition === 'bottom' ? 'bg-blue-600/20 border-blue-500' : 'theme-bg-primary theme-border hover:theme-bg-secondary'}`}
+                    >
+                    <div className="w-full h-20 bg-slate-900 rounded-lg border border-white/10 relative overflow-hidden">
+                    <div className="absolute bottom-0 left-0 right-0 h-3 bg-blue-500"></div>
+                    </div>
+                    <span className="font-bold theme-text-primary">Bottom</span>
+                    </button>
+                    </div>
+                    </div>
+                    </div>
+                );
+
             case 'personalization':
                 return (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <h2 className="text-2xl font-bold theme-text-primary">Personalization</h2>
 
+                    {/* Standard Themes */}
                     <div className="theme-bg-secondary p-6 rounded-2xl theme-border border">
                     <label className="block text-sm font-medium theme-text-secondary mb-4 flex items-center gap-2">
-                    <Palette size={16} className="text-purple-400" /> Color Theme
+                    <Palette size={16} className="text-purple-400" /> Default Themes
                     </label>
                     <div className="grid grid-cols-2 gap-4">
                     {Object.entries(THEMES).map(([key, theme]) => (
@@ -133,98 +166,123 @@ const SettingsApp: React.FC<AppProps> = () => {
                     ))}
                     </div>
                     </div>
-                    </div>
-                );
 
-            case 'wifi':
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold theme-text-primary">Wi-Fi Networks</h2>
-                    <button onClick={scanNetworks} className={`p-2 theme-bg-secondary rounded-full hover:bg-white/10 ${scanning ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button>
-                    </div>
-                    <div className="theme-bg-secondary theme-border border rounded-2xl overflow-hidden">
-                    {networks.length === 0 && !scanning && <div className="p-8 text-center theme-text-secondary">No networks found</div>}
-                    {networks.map((net, i) => (
-                        <div key={i} className={`flex items-center justify-between p-4 border-b theme-border last:border-0 transition-colors ${net.in_use ? 'bg-blue-500/10' : 'hover:bg-white/5'}`}>
-                        <div className="flex items-center gap-3">
-                        <Wifi size={20} className={net.signal > 60 ? "text-green-400" : "text-yellow-400"} />
-                        <div>
-                        <div className="font-medium theme-text-primary flex items-center gap-2">
-                        {net.ssid}
-                        {net.in_use && <span className="text-[10px] bg-green-500/20 text-green-400 px-2 rounded-full">Connected</span>}
-                        </div>
-                        <div className="text-xs theme-text-secondary flex items-center gap-1">
-                        {net.secure ? <Lock size={10} /> : <Unlock size={10} />}
-                        {net.secure ? "Secure" : "Open"} • {net.signal}% Signal
-                        </div>
-                        </div>
-                        </div>
-                        {net.in_use ? (
-                            <button className="px-4 py-2 bg-green-600/20 text-green-400 rounded-lg text-sm font-medium cursor-default">Connected</button>
-                        ) : (
-                            <button
-                            onClick={() => handleConnectWifi(net.ssid)}
-                            disabled={connectingTo !== null}
-                            className="px-4 py-2 theme-bg-primary hover:theme-accent hover:text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
-                            >
-                            {connectingTo === net.ssid && <Loader2 size={14} className="animate-spin" />}
-                            {connectingTo === net.ssid ? 'Connecting...' : 'Connect'}
-                            </button>
-                        )}
-                        </div>
-                    ))}
-                    </div>
-                    </div>
-                );
-
-            case 'bluetooth':
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold theme-text-primary">Bluetooth</h2>
-                    <button onClick={scanBluetooth} className={`p-2 theme-bg-secondary rounded-full hover:bg-white/10 ${scanning ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button>
-                    </div>
-                    <div className="theme-bg-secondary theme-border border rounded-2xl overflow-hidden">
-                    {btDevices.map((dev, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 border-b theme-border last:border-0 hover:bg-white/5 transition-colors">
-                        <div className="flex items-center gap-3">
-                        <Bluetooth size={20} className={dev.connected ? "theme-accent-text" : "theme-text-secondary"} />
-                        <div>
-                        <div className="font-medium theme-text-primary">{dev.name}</div>
-                        <div className="text-xs theme-text-secondary capitalize">{dev.type || 'Unknown'} • {dev.connected ? "Connected" : "Not Connected"}</div>
-                        </div>
-                        </div>
+                    {/* Custom Themes */}
+                    <div className="theme-bg-secondary p-6 rounded-2xl theme-border border">
+                    <label className="block text-sm font-medium theme-text-secondary mb-4 flex items-center justify-between">
+                    <span className="flex items-center gap-2"><FileCode size={16} className="text-green-400" /> Custom Themes (CSS)</span>
+                    <span className="text-xs text-slate-500">~/.config/Blue-Environment/themes/</span>
+                    </label>
+                    <div className="space-y-2">
+                    {customThemes.length === 0 && <div className="text-sm text-slate-500 italic">No custom themes found. Add .css files to config folder.</div>}
+                    {customThemes.map((theme) => (
                         <button
-                        onClick={() => handleToggleBt(dev.mac)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${dev.connected ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'theme-bg-primary hover:theme-accent hover:text-white'}`}
+                        key={theme.id}
+                        onClick={() => handleSave({ themeName: theme.id })}
+                        className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all ${config.themeName === theme.id ? 'bg-blue-600/20 border-blue-500' : 'theme-bg-primary theme-border hover:theme-bg-secondary'}`}
                         >
-                        {dev.connected ? "Disconnect" : "Pair"}
-                        </button>
+                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-700 to-gray-900 border border-white/10 flex items-center justify-center text-xs font-mono">CSS</div>
+                        <div className="text-left">
+                        <div className="font-bold theme-text-primary">{theme.name}</div>
+                        <div className="text-xs theme-text-secondary">Custom File</div>
                         </div>
+                        {config.themeName === theme.id && <Check size={20} className="ml-auto theme-accent-text" />}
+                        </button>
                     ))}
+                    </div>
                     </div>
                     </div>
                 );
 
-            case 'about':
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <h2 className="text-2xl font-bold theme-text-primary">About System</h2>
-                    <div className="bg-gradient-to-br from-blue-900/50 to-slate-900 p-8 rounded-3xl theme-border border flex items-center gap-6">
-                    <div className="w-24 h-24 theme-accent rounded-full flex items-center justify-center shadow-2xl text-white">
-                    <span className="text-4xl font-bold">B</span>
-                    </div>
-                    <div>
-                    <h3 className="text-2xl font-bold text-white">Blue Environment</h3>
-                    <p className="text-blue-200">Version 1.2.0 (Stable)</p>
-                    <p className="text-slate-400 text-sm mt-2">Running on HackerOS Linux</p>
-                    </div>
-                    </div>
-                    </div>
-                );
-            default:
-                return null;
+                case 'wifi':
+                    return (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold theme-text-primary">Wi-Fi Networks</h2>
+                        <button onClick={scanNetworks} className={`p-2 theme-bg-secondary rounded-full hover:bg-white/10 ${scanning ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button>
+                        </div>
+                        <div className="theme-bg-secondary theme-border border rounded-2xl overflow-hidden">
+                        {networks.length === 0 && !scanning && <div className="p-8 text-center theme-text-secondary">No networks found</div>}
+                        {networks.map((net, i) => (
+                            <div key={i} className={`flex items-center justify-between p-4 border-b theme-border last:border-0 transition-colors ${net.in_use ? 'bg-blue-500/10' : 'hover:bg-white/5'}`}>
+                            <div className="flex items-center gap-3">
+                            <Wifi size={20} className={net.signal > 60 ? "text-green-400" : "text-yellow-400"} />
+                            <div>
+                            <div className="font-medium theme-text-primary flex items-center gap-2">
+                            {net.ssid}
+                            {net.in_use && <span className="text-[10px] bg-green-500/20 text-green-400 px-2 rounded-full">Connected</span>}
+                            </div>
+                            <div className="text-xs theme-text-secondary flex items-center gap-1">
+                            {net.secure ? <Lock size={10} /> : <Unlock size={10} />}
+                            {net.secure ? "Secure" : "Open"} • {net.signal}% Signal
+                            </div>
+                            </div>
+                            </div>
+                            {net.in_use ? (
+                                <button className="px-4 py-2 bg-green-600/20 text-green-400 rounded-lg text-sm font-medium cursor-default">Connected</button>
+                            ) : (
+                                <button
+                                onClick={() => handleConnectWifi(net.ssid)}
+                                disabled={connectingTo !== null}
+                                className="px-4 py-2 theme-bg-primary hover:theme-accent hover:text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
+                                >
+                                {connectingTo === net.ssid && <Loader2 size={14} className="animate-spin" />}
+                                {connectingTo === net.ssid ? 'Connecting...' : 'Connect'}
+                                </button>
+                            )}
+                            </div>
+                        ))}
+                        </div>
+                        </div>
+                    );
+
+                case 'bluetooth':
+                    return (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold theme-text-primary">Bluetooth</h2>
+                        <button onClick={scanBluetooth} className={`p-2 theme-bg-secondary rounded-full hover:bg-white/10 ${scanning ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button>
+                        </div>
+                        <div className="theme-bg-secondary theme-border border rounded-2xl overflow-hidden">
+                        {btDevices.map((dev, i) => (
+                            <div key={i} className="flex items-center justify-between p-4 border-b theme-border last:border-0 hover:bg-white/5 transition-colors">
+                            <div className="flex items-center gap-3">
+                            <Bluetooth size={20} className={dev.connected ? "theme-accent-text" : "theme-text-secondary"} />
+                            <div>
+                            <div className="font-medium theme-text-primary">{dev.name}</div>
+                            <div className="text-xs theme-text-secondary capitalize">{dev.type || 'Unknown'} • {dev.connected ? "Connected" : "Not Connected"}</div>
+                            </div>
+                            </div>
+                            <button
+                            onClick={() => handleToggleBt(dev.mac)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${dev.connected ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'theme-bg-primary hover:theme-accent hover:text-white'}`}
+                            >
+                            {dev.connected ? "Disconnect" : "Pair"}
+                            </button>
+                            </div>
+                        ))}
+                        </div>
+                        </div>
+                    );
+
+                case 'about':
+                    return (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h2 className="text-2xl font-bold theme-text-primary">About System</h2>
+                        <div className="bg-gradient-to-br from-blue-900/50 to-slate-900 p-8 rounded-3xl theme-border border flex items-center gap-6">
+                        <div className="w-24 h-24 theme-accent rounded-full flex items-center justify-center shadow-2xl text-white">
+                        <span className="text-4xl font-bold">B</span>
+                        </div>
+                        <div>
+                        <h3 className="text-2xl font-bold text-white">Blue Environment</h3>
+                        <p className="text-blue-200">Version 1.3.0 (Nightly)</p>
+                        <p className="text-slate-400 text-sm mt-2">Running on HackerOS Linux</p>
+                        </div>
+                        </div>
+                        </div>
+                    );
+                default:
+                    return null;
         }
     };
 
@@ -243,9 +301,16 @@ const SettingsApp: React.FC<AppProps> = () => {
         onClick={() => setActiveTab('display')}
         />
         <TabButton
+        id="bar"
+        icon={LayoutPanelTop}
+        label="Dock & Bar"
+        isActive={activeTab === 'bar'}
+        onClick={() => setActiveTab('bar')}
+        />
+        <TabButton
         id="personalization"
         icon={Palette}
-        label="Personalization"
+        label="Themes"
         isActive={activeTab === 'personalization'}
         onClick={() => setActiveTab('personalization')}
         />
