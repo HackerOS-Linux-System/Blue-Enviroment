@@ -1,10 +1,34 @@
 [package]
 name = "blue-backend"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 
 [dependencies]
-# Używamy wersji git, ponieważ API użyte w kodzie (makra delegate_*) jest dostępne w wersji deweloperskiej.
-smithay = { git = "https://github.com/Smithay/smithay.git", features = ["backend_winit", "renderer_gl", "wayland_frontend", "xwayland"] }
-log = "0.4"
-env_logger = "0.10"
+smithay = { git = "https://github.com/Smithay/smithay.git", features = [
+    "backend_drm",
+    "backend_gbm",
+    "backend_egl",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session",
+    "renderer_gl",
+    "wayland_frontend",
+    "xwayland",
+] }
+smithay-drm-extras = { git = "https://github.com/Smithay/smithay.git" }
+
+calloop = "0.13"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "time", "local-time"] }
+tracing-appender = "0.2"
+clap = { version = "4.4", features = ["derive"] }
+xkbcommon = "0.7"
+drm = "0.11"
+input = "0.8" # Libinput bindings
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = true
+opt-level = 3
