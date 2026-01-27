@@ -1,4 +1,4 @@
-import { Terminal, Bot, FolderOpen, Settings, Info, Box, Globe, FileEdit, Image as ImageIcon, Video, Music, Calculator, Activity, Monitor, Smartphone } from 'lucide-react';
+import { Terminal, Bot, FolderOpen, Settings, Info, Box, Globe, FileEdit, Image as ImageIcon, Video, Music, Calculator, Activity, Monitor, Smartphone, ShoppingBag } from 'lucide-react';
 import { AppDefinition, AppId } from './types';
 
 import GeminiAssistantApp from './components/apps/GeminiAssistantApp';
@@ -12,6 +12,7 @@ import SystemMonitorApp from './components/apps/SystemMonitorApp';
 import BlueScreenApp from './components/apps/BlueScreenApp';
 import BlueMediaApp from './components/apps/BlueMediaApp';
 import BlueConnectApp from './components/apps/BlueConnectApp';
+import BlueSoftwareApp from './components/apps/BlueSoftwareApp';
 
 export const WALLPAPER_URL = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop";
 
@@ -29,6 +30,14 @@ export const APPS: Record<AppId, AppDefinition> = {
         icon: Terminal,
         isExternal: true,
         component: () => null,
+    },
+    [AppId.BLUE_SOFTWARE]: {
+        id: AppId.BLUE_SOFTWARE,
+        title: 'Blue Software',
+        icon: ShoppingBag,
+        component: BlueSoftwareApp,
+        defaultWidth: 900,
+            defaultHeight: 650
     },
     [AppId.BLUE_WEB]: {
         id: AppId.BLUE_WEB,
