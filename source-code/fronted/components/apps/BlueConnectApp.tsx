@@ -26,14 +26,14 @@ const BlueConnectApp: React.FC<AppProps> = () => {
     };
 
     return (
-        <div className="flex h-full bg-slate-900 text-slate-100">
+        <div className="flex h-full bg-slate-900 text-slate-100 overflow-hidden">
         {/* Sidebar */}
-        <div className="w-64 border-r border-white/5 bg-slate-900/50 flex flex-col">
+        <div className="w-64 border-r border-white/5 bg-slate-900/50 flex flex-col shrink-0">
         <div className="p-4 border-b border-white/5 flex items-center justify-between">
         <span className="font-bold flex items-center gap-2"><Smartphone size={18} className="text-blue-400" /> Devices</span>
         <button className="p-1.5 hover:bg-white/10 rounded-full"><RefreshCw size={14} /></button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
         {devices.map(dev => (
             <button
             key={dev.id}
@@ -55,20 +55,17 @@ const BlueConnectApp: React.FC<AppProps> = () => {
             </button>
         ))}
         </div>
-        <div className="p-4 border-t border-white/5 text-xs text-slate-500 text-center">
-        Pair new device via Blue Connect Android App
-        </div>
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex flex-col bg-slate-950">
+        <div className="flex-1 flex flex-col bg-slate-950 min-w-0">
         {activeDevice ? (
             <>
             {/* Header */}
-            <div className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-slate-900/30">
+            <div className="h-20 border-b border-white/5 flex items-center justify-between px-6 bg-slate-900/30 shrink-0">
             <div>
-            <h2 className="text-xl font-bold">{activeDevice.name}</h2>
-            <span className="text-xs text-slate-400 flex items-center gap-2">
+            <h2 className="text-2xl font-bold">{activeDevice.name}</h2>
+            <span className="text-xs text-slate-400 flex items-center gap-2 mt-1">
             <Wifi size={12} /> {activeDevice.ip}
             </span>
             </div>
@@ -82,64 +79,50 @@ const BlueConnectApp: React.FC<AppProps> = () => {
             </div>
 
             {/* Grid */}
-            <div className="p-6 grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto">
-            <div className="col-span-full mb-2">
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Quick Actions</h3>
+            <div className="p-8 grid grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto custom-scrollbar">
+            <div className="col-span-full">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Quick Actions</h3>
             </div>
 
-            <button onClick={() => handleAction('Ping')} className="bg-slate-800/50 hover:bg-blue-600/20 hover:border-blue-500/50 border border-white/5 p-4 rounded-2xl flex flex-col items-center gap-3 transition-all group">
-            <div className="p-3 bg-blue-500 rounded-full text-white shadow-lg group-hover:scale-110 transition-transform"><Wifi size={24} /></div>
-            <span className="font-medium">Ping Device</span>
+            <button onClick={() => handleAction('Ping')} className="bg-slate-800/50 hover:bg-blue-600/20 hover:border-blue-500/50 border border-white/5 p-6 rounded-2xl flex flex-col items-center gap-4 transition-all group">
+            <div className="p-4 bg-blue-500 rounded-full text-white shadow-lg group-hover:scale-110 transition-transform"><Wifi size={24} /></div>
+            <span className="font-medium text-lg">Ping Device</span>
             </button>
 
-            <button onClick={() => handleAction('Clipboard')} className="bg-slate-800/50 hover:bg-blue-600/20 hover:border-blue-500/50 border border-white/5 p-4 rounded-2xl flex flex-col items-center gap-3 transition-all group">
-            <div className="p-3 bg-emerald-500 rounded-full text-white shadow-lg group-hover:scale-110 transition-transform"><Clipboard size={24} /></div>
-            <span className="font-medium">Send Clipboard</span>
+            <button onClick={() => handleAction('Clipboard')} className="bg-slate-800/50 hover:bg-blue-600/20 hover:border-blue-500/50 border border-white/5 p-6 rounded-2xl flex flex-col items-center gap-4 transition-all group">
+            <div className="p-4 bg-emerald-500 rounded-full text-white shadow-lg group-hover:scale-110 transition-transform"><Clipboard size={24} /></div>
+            <span className="font-medium text-lg">Send Clipboard</span>
             </button>
 
-            <button onClick={() => handleAction('File')} className="bg-slate-800/50 hover:bg-blue-600/20 hover:border-blue-500/50 border border-white/5 p-4 rounded-2xl flex flex-col items-center gap-3 transition-all group">
-            <div className="p-3 bg-purple-500 rounded-full text-white shadow-lg group-hover:scale-110 transition-transform"><Share2 size={24} /></div>
-            <span className="font-medium">Share File</span>
+            <button onClick={() => handleAction('File')} className="bg-slate-800/50 hover:bg-blue-600/20 hover:border-blue-500/50 border border-white/5 p-6 rounded-2xl flex flex-col items-center gap-4 transition-all group">
+            <div className="p-4 bg-purple-500 rounded-full text-white shadow-lg group-hover:scale-110 transition-transform"><Share2 size={24} /></div>
+            <span className="font-medium text-lg">Share File</span>
             </button>
 
-            <div className="col-span-full mt-4 mb-2">
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Multimedia Control</h3>
+            <div className="col-span-full mt-6">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Multimedia Control</h3>
             </div>
 
-            <div className="col-span-full bg-slate-800/30 border border-white/5 rounded-2xl p-6 flex items-center gap-6">
-            <div className="w-20 h-20 bg-slate-800 rounded-xl flex items-center justify-center">
-            <Music size={32} className="text-slate-600" />
+            <div className="col-span-full bg-slate-800/30 border border-white/5 rounded-3xl p-6 flex flex-col sm:flex-row items-center gap-8">
+            <div className="w-24 h-24 bg-slate-800 rounded-2xl flex items-center justify-center shadow-inner">
+            <Music size={40} className="text-slate-600" />
             </div>
-            <div className="flex-1">
-            <div className="text-lg font-bold">Not Playing</div>
+            <div className="flex-1 text-center sm:text-left">
+            <div className="text-xl font-bold">Not Playing</div>
             <div className="text-sm text-slate-500">No media detected on {activeDevice.name}</div>
-            <div className="mt-4 flex gap-4">
-            <button className="p-2 bg-slate-700 rounded-full hover:bg-white text-slate-300 hover:text-black transition-colors">Prev</button>
-            <button className="p-2 px-6 bg-blue-600 rounded-full hover:bg-blue-500 text-white transition-colors">Play</button>
-            <button className="p-2 bg-slate-700 rounded-full hover:bg-white text-slate-300 hover:text-black transition-colors">Next</button>
+            <div className="mt-6 flex gap-4 justify-center sm:justify-start">
+            <button className="p-3 bg-slate-700 rounded-full hover:bg-white text-slate-300 hover:text-black transition-colors"><Image size={16} className="rotate-180" /></button>
+            <button className="p-3 px-8 bg-blue-600 rounded-full hover:bg-blue-500 text-white transition-colors shadow-lg shadow-blue-500/20">Play</button>
+            <button className="p-3 bg-slate-700 rounded-full hover:bg-white text-slate-300 hover:text-black transition-colors"><Image size={16} /></button>
             </div>
             </div>
             </div>
-
-            <div className="col-span-full mt-4 mb-2">
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Remote Input</h3>
-            </div>
-
-            <button className="col-span-1 p-4 bg-slate-800/50 border border-white/5 rounded-xl text-left hover:bg-white/5">
-            <span className="font-bold block">Remote Keyboard</span>
-            <span className="text-xs text-slate-400">Type on your device from here</span>
-            </button>
-            <button className="col-span-1 p-4 bg-slate-800/50 border border-white/5 rounded-xl text-left hover:bg-white/5">
-            <span className="font-bold block">Presentation Mode</span>
-            <span className="text-xs text-slate-400">Control slides</span>
-            </button>
-
             </div>
             </>
         ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
-            <Smartphone size={48} className="mb-4 opacity-20" />
-            <p>Select a device to interact</p>
+            <Smartphone size={64} className="mb-6 opacity-20" />
+            <p className="text-lg">Select a device to interact</p>
             </div>
         )}
         </div>
