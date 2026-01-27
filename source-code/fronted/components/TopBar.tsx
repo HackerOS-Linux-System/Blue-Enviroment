@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AppId } from '../types';
 import { APPS } from '../constants';
-import { Search, Wifi, Bell, Command, CloudSun } from 'lucide-react';
+import { Search, Wifi, Bell, Command, CloudSun, Battery, BatteryCharging } from 'lucide-react';
+import { SystemBridge } from '../utils/systemBridge';
 
 interface TopBarProps {
     openWindows: { id: string; appId: AppId; isMinimized: boolean; isActive: boolean }[];
@@ -12,6 +13,7 @@ interface TopBarProps {
     onToggleControlCenter: () => void;
     onToggleNotifications: () => void;
     isStartMenuOpen: boolean;
+    position?: 'top' | 'bottom';
 }
 
 const TopBar: React.FC<TopBarProps> = ({
@@ -26,9 +28,26 @@ const TopBar: React.FC<TopBarProps> = ({
 }) => {
     const [time, setTime] = useState(new Date());
     const [weather, setWeather] = useState({ temp: '--', condition: 'Loading' });
+    const [battery, setBattery] = useState({ level: 100, isCharging: false });
+    const [wifiConnected, setWifiConnected] = useState(false);
 
     useEffect(() => {
-        const timer = setInterval(() => setTime(new Date()), 1000);
+        const timer = setInterval(() => {
+            setTime(new Date());
+
+            // Poll System Stats
+            SystemBridge.getSystemStats().then(stats => {
+                setBattery({ level: stats.battery, isCharging: stats.is_charging });
+                setWifiConnected(stats.wifi_ssid !== 'Disconnected' && stats.wifi_ssid !== 'Off');
+            });
+
+        }, 2000);
+
+        // Initial fetch
+        SystemBridge.getSystemStats().then(stats => {
+            setBattery({ level: stats.battery, isCharging: stats.is_charging });
+            setWifiConnected(stats.wifi_ssid !== 'Disconnected' && stats.wifi_ssid !== 'Off');
+        });
 
         // Simple weather fetch based on IP
         fetch('https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current_weather=true')
@@ -51,10 +70,10 @@ const TopBar: React.FC<TopBarProps> = ({
         else if (e.detail === 2) onStartDoubleClick();
     };
 
-        const pinnedApps = [AppId.TERMINAL, AppId.EXPLORER, AppId.AI_ASSISTANT, AppId.SETTINGS];
+        const pinnedApps = [AppId.TERMINAL, AppId.EXPLORER, AppId.BLUE_SOFTWARE, AppId.SETTINGS];
 
         return (
-            <div className="absolute top-0 left-0 right-0 h-12 bg-slate-900 border-b border-white/5 flex items-center justify-between px-3 z-50 select-none shadow-sm">
+            <div className="absolute top-0 left-0 right-0 h-12 bg-slate-900 border-b border-white/5 flex items-center justify-between px-3 z-50 select-none shadow-sm pointer-events-auto">
             <div className="flex items-center gap-4 w-1/3">
             <button
             onClick={handleStartClick}
@@ -106,8 +125,14 @@ const TopBar: React.FC<TopBarProps> = ({
             </div>
 
             <button onClick={onToggleControlCenter} className="flex items-center gap-3 px-3 py-1.5 rounded-full hover:bg-white/10 transition-colors border border-transparent hover:border-white/5">
-            <Wifi size={14} className="text-slate-200" />
-            <span className="text-xs font-medium text-slate-200">{time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            <Wifi size={14} className={wifiConnected ? "text-slate-200" : "text-slate-500"} />
+            <div className="flex flex-col items-end">
+            <span className="text-xs font-medium text-slate-200 leading-none">{time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            <div className="flex items-center gap-1">
+            <span className={`text-[9px] ${battery.level < 20 ? 'text-red-400' : 'text-slate-400'}`}>{Math.round(battery.level)}%</span>
+            {battery.isCharging ? <BatteryCharging size={10} className="text-green-400" /> : <Battery size={10} className="text-slate-500" />}
+            </div>
+            </div>
             </button>
 
             <button onClick={onToggleNotifications} className="relative p-2 rounded-full hover:bg-white/10 transition-colors group">
