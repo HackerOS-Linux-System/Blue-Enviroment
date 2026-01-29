@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Monitor, Wifi, Bluetooth, Volume2, Image as ImageIcon, Info, User, Palette, Check, RefreshCw, Lock, Unlock, Loader2, LayoutPanelTop, LayoutPanelLeft, FileCode } from 'lucide-react';
-import { AppProps, UserConfig, CustomTheme } from '../../types';
+import { Monitor, Wifi, Bluetooth, Volume2, Image as ImageIcon, Info, User, Palette, Check, RefreshCw, Lock, Unlock, Loader2, LayoutPanelTop, LayoutPanelLeft, FileCode, AppWindow, ToggleLeft, ToggleRight, Edit3, Cpu, HardDrive, Shield, Hash, Signal } from 'lucide-react';
+import { AppProps, UserConfig, CustomTheme, AppId, WifiNetwork, BluetoothDevice } from '../../types';
 import { SystemBridge } from '../../utils/systemBridge';
-import { THEMES } from '../../constants';
+import { THEMES, APPS } from '../../constants';
+
+interface SettingsProps extends AppProps {
+    config?: UserConfig;
+    onSave?: (cfg: Partial<UserConfig>) => void;
+    initialTab?: string;
+}
 
 const TabButton = ({ id, icon: Icon, label, isActive, onClick }: any) => (
     <button
@@ -17,345 +23,420 @@ const TabButton = ({ id, icon: Icon, label, isActive, onClick }: any) => (
     </button>
 );
 
-const SettingsApp: React.FC<AppProps> = () => {
-    const [config, setConfig] = useState<UserConfig | null>(null);
+const SettingsApp: React.FC<SettingsProps> = ({ config: propConfig, onSave, initialTab }) => {
+    const [localConfig, setLocalConfig] = useState<UserConfig | null>(propConfig || null);
     const [wallpapers, setWallpapers] = useState<string[]>([]);
     const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
-    const [activeTab, setActiveTab] = useState('personalization');
+    const [activeTab, setActiveTab] = useState(initialTab || 'apps');
+    const [sysInfo, setSysInfo] = useState<any>(null);
+    const [realStats, setRealStats] = useState<any>(null);
 
-    // Network State
-    const [networks, setNetworks] = useState<any[]>([]);
-    const [btDevices, setBtDevices] = useState<any[]>([]);
-    const [scanning, setScanning] = useState(false);
-    const [connectingTo, setConnectingTo] = useState<string | null>(null);
+    // Wi-Fi State
+    const [networks, setNetworks] = useState<WifiNetwork[]>([]);
+    const [wifiPassword, setWifiPassword] = useState('');
+    const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
+    const [isConnectingWifi, setIsConnectingWifi] = useState(false);
+
+    // Bluetooth State
+    const [btDevices, setBtDevices] = useState<BluetoothDevice[]>([]);
+
+    // Theme Editor State
+    const [isEditingTheme, setIsEditingTheme] = useState(false);
+    const [themeEditValues, setThemeEditValues] = useState({
+        bgPrimary: '#0f172a',
+        bgSecondary: '#1e293b',
+        textPrimary: '#f1f5f9',
+        accent: '#2563eb'
+    });
 
     useEffect(() => {
-        SystemBridge.loadConfig().then(setConfig);
-        SystemBridge.getWallpapers().then(setWallpapers);
-        SystemBridge.getCustomThemes().then(setCustomThemes);
-    }, []);
+        if(initialTab) setActiveTab(initialTab);
+    }, [initialTab]);
 
-    const handleSave = (newConfig: Partial<UserConfig>) => {
-        if (!config) return;
-        const updated = { ...config, ...newConfig };
-        setConfig(updated);
-        SystemBridge.saveConfig(updated);
-    };
+        useEffect(() => {
+            if(!propConfig) SystemBridge.loadConfig().then(setLocalConfig);
+            SystemBridge.getWallpapers().then(setWallpapers);
+            SystemBridge.getCustomThemes().then(setCustomThemes);
+            SystemBridge.getDistroInfo().then(setSysInfo);
+            SystemBridge.getSystemStats().then(setRealStats);
 
-    const scanNetworks = async () => {
-        setScanning(true);
-        const nets = await SystemBridge.getWifiNetworks();
-        setNetworks(nets);
-        setScanning(false);
-    };
+            // Load Connectivity Data
+            if (activeTab === 'wifi') SystemBridge.getWifiNetworks().then(setNetworks);
+            if (activeTab === 'bluetooth') SystemBridge.getBluetoothDevices().then(setBtDevices);
 
-    const handleConnectWifi = async (ssid: string) => {
-        setConnectingTo(ssid);
-        try {
-            await SystemBridge.connectWifi(ssid, "password");
-            await scanNetworks();
-        } catch (e) {
-            alert("Connection failed");
-        } finally {
-            setConnectingTo(null);
-        }
-    };
+        }, [propConfig, activeTab]);
 
-    const scanBluetooth = async () => {
-        setScanning(true);
-        const devs = await SystemBridge.getBluetoothDevices();
-        setBtDevices(devs);
-        setScanning(false);
-    };
+            const handleUpdate = (update: Partial<UserConfig>) => {
+                if (!localConfig) return;
+                const newState = { ...localConfig, ...update };
+                setLocalConfig(newState);
+                if (onSave) onSave(update);
+                else SystemBridge.saveConfig(newState);
+            };
 
-    const handleToggleBt = async (mac: string) => {
-        // @ts-ignore
-        if (SystemBridge.toggleBluetoothDevice) {
-            // @ts-ignore
-            await SystemBridge.toggleBluetoothDevice(mac);
-            scanBluetooth();
-        }
-    };
+                const handleWifiConnect = async () => {
+                    if (!selectedNetwork) return;
+                    setIsConnectingWifi(true);
+                    try {
+                        await SystemBridge.connectWifi(selectedNetwork, wifiPassword);
+                        alert(`Connected to ${selectedNetwork}`);
+                        setWifiPassword('');
+                        setSelectedNetwork(null);
+                    } catch (e) {
+                        alert("Connection Failed");
+                    } finally {
+                        setIsConnectingWifi(false);
+                    }
+                };
 
-    if (!config) return <div className="h-full flex items-center justify-center text-slate-400"><RefreshCw className="animate-spin mr-2" /> Loading system config...</div>;
+                const toggleApp = (appId: string) => {
+                    if(!localConfig) return;
+                    const currentDisabled = localConfig.disabledApps || [];
+                    const isDisabled = currentDisabled.includes(appId);
 
-    const renderContent = () => {
-        switch(activeTab) {
-            case 'display':
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <h2 className="text-2xl font-bold theme-text-primary">Display & Appearance</h2>
+                    let newDisabled;
+                    if (isDisabled) {
+                        newDisabled = currentDisabled.filter(id => id !== appId);
+                    } else {
+                        newDisabled = [...currentDisabled, appId];
+                    }
+                    handleUpdate({ disabledApps: newDisabled });
+                };
 
-                    <div className="theme-bg-secondary p-6 rounded-2xl theme-border border">
-                    <label className="block text-sm font-medium theme-text-secondary mb-4 flex items-center gap-2">
-                    <ImageIcon size={16} className="theme-accent-text" /> Wallpaper
-                    </label>
-                    <div className="grid grid-cols-3 gap-4 max-h-60 overflow-y-auto custom-scrollbar p-1">
-                    {wallpapers.map((wp, idx) => (
-                        <div
-                        key={idx}
-                        className={`relative aspect-video rounded-xl overflow-hidden cursor-pointer border-2 transition-all hover:scale-105 ${config.wallpaper === wp ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-transparent'}`}
-                        onClick={() => handleSave({ wallpaper: wp })}
-                        >
-                        <img src={wp} className="w-full h-full object-cover" loading="lazy" alt={`Wallpaper ${idx}`} />
-                        </div>
-                    ))}
-                    </div>
-                    </div>
-                    </div>
-                );
+                const saveCustomTheme = () => {
+                    const css = `
+                    :root {
+                        --bg-primary: ${themeEditValues.bgPrimary};
+                        --bg-secondary: ${themeEditValues.bgSecondary};
+                        --text-primary: ${themeEditValues.textPrimary};
+                        --text-secondary: ${themeEditValues.textPrimary}99;
+                        --accent: ${themeEditValues.accent};
+                        --accent-hover: ${themeEditValues.accent}dd;
+                    }`;
 
-            case 'bar':
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <h2 className="text-2xl font-bold theme-text-primary">Dock & Bar</h2>
+                    const themeName = `Custom ${new Date().toLocaleTimeString()}`;
+                    const id = `custom:${Date.now()}`;
 
-                    <div className="theme-bg-secondary p-6 rounded-2xl theme-border border">
-                    <label className="block text-sm font-medium theme-text-secondary mb-4 flex items-center gap-2">
-                    <LayoutPanelTop size={16} className="theme-accent-text" /> Bar Position
-                    </label>
-                    <div className="grid grid-cols-2 gap-4">
-                    <button
-                    onClick={() => handleSave({ barPosition: 'top' })}
-                    className={`p-6 rounded-xl border flex flex-col items-center gap-3 transition-all ${config.barPosition === 'top' ? 'bg-blue-600/20 border-blue-500' : 'theme-bg-primary theme-border hover:theme-bg-secondary'}`}
-                    >
-                    <div className="w-full h-20 bg-slate-900 rounded-lg border border-white/10 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 right-0 h-3 bg-blue-500"></div>
-                    </div>
-                    <span className="font-bold theme-text-primary">Top</span>
-                    </button>
+                    const newTheme: CustomTheme = { id, name: themeName, cssContent: css };
+                    setCustomThemes([...customThemes, newTheme]);
+                    handleUpdate({ themeName: id });
+                    setIsEditingTheme(false);
+                };
 
-                    <button
-                    onClick={() => handleSave({ barPosition: 'bottom' })}
-                    className={`p-6 rounded-xl border flex flex-col items-center gap-3 transition-all ${config.barPosition === 'bottom' ? 'bg-blue-600/20 border-blue-500' : 'theme-bg-primary theme-border hover:theme-bg-secondary'}`}
-                    >
-                    <div className="w-full h-20 bg-slate-900 rounded-lg border border-white/10 relative overflow-hidden">
-                    <div className="absolute bottom-0 left-0 right-0 h-3 bg-blue-500"></div>
-                    </div>
-                    <span className="font-bold theme-text-primary">Bottom</span>
-                    </button>
-                    </div>
-                    </div>
-                    </div>
-                );
+                if (!localConfig) return <div className="h-full flex items-center justify-center text-slate-400"><RefreshCw className="animate-spin mr-2" /> Loading...</div>;
 
-            case 'personalization':
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <h2 className="text-2xl font-bold theme-text-primary">Personalization</h2>
+                const renderContent = () => {
+                    switch(activeTab) {
+                        case 'wifi':
+                            return (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <h2 className="text-2xl font-bold theme-text-primary">Wi-Fi Networks</h2>
+                                <div className="theme-bg-secondary rounded-2xl border theme-border overflow-hidden">
+                                {networks.map((net, i) => (
+                                    <div key={i} className="p-4 border-b theme-border flex flex-col gap-2">
+                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                    <Signal size={18} className={net.in_use ? "text-green-400" : "text-slate-400"} />
+                                    <span className="font-bold">{net.ssid}</span>
+                                    {net.secure && <Lock size={12} className="text-slate-500" />}
+                                    </div>
+                                    <button
+                                    onClick={() => setSelectedNetwork(selectedNetwork === net.ssid ? null : net.ssid)}
+                                    className={`px-3 py-1 rounded text-xs font-bold transition-colors ${net.in_use ? 'text-green-400' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+                                    >
+                                    {net.in_use ? 'Connected' : 'Connect'}
+                                    </button>
+                                    </div>
+                                    {selectedNetwork === net.ssid && !net.in_use && (
+                                        <div className="flex gap-2 mt-2 animate-in slide-in-from-top-1">
+                                        <input
+                                        type="password"
+                                        placeholder="Password"
+                                        className="flex-1 bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm"
+                                        value={wifiPassword}
+                                        onChange={e => setWifiPassword(e.target.value)}
+                                        />
+                                        <button onClick={handleWifiConnect} disabled={isConnectingWifi} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded text-sm font-bold">
+                                        {isConnectingWifi ? '...' : 'Join'}
+                                        </button>
+                                        </div>
+                                    )}
+                                    </div>
+                                ))}
+                                </div>
+                                </div>
+                            );
+                        case 'bluetooth':
+                            return (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <h2 className="text-2xl font-bold theme-text-primary">Bluetooth Devices</h2>
+                                <div className="theme-bg-secondary rounded-2xl border theme-border overflow-hidden p-4">
+                                {btDevices.length === 0 ? <p className="text-slate-400 text-center">Scanning for devices...</p> : (
+                                    btDevices.map((dev, i) => (
+                                        <div key={i} className="flex items-center justify-between p-3 border-b theme-border last:border-0">
+                                        <div className="flex items-center gap-3">
+                                        <Bluetooth size={18} className="text-blue-400" />
+                                        <span>{dev.name}</span>
+                                        </div>
+                                        <button className="text-xs text-blue-400 hover:underline">Pair</button>
+                                        </div>
+                                    ))
+                                )}
+                                </div>
+                                </div>
+                            );
 
-                    {/* Standard Themes */}
-                    <div className="theme-bg-secondary p-6 rounded-2xl theme-border border">
-                    <label className="block text-sm font-medium theme-text-secondary mb-4 flex items-center gap-2">
-                    <Palette size={16} className="text-purple-400" /> Default Themes
-                    </label>
-                    <div className="grid grid-cols-2 gap-4">
-                    {Object.entries(THEMES).map(([key, theme]) => (
-                        <button
-                        key={key}
-                        onClick={() => handleSave({ themeName: key as any })}
-                        className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${config.themeName === key ? 'bg-blue-600/20 border-blue-500' : 'theme-bg-primary theme-border hover:theme-bg-secondary'}`}
-                        >
-                        <div className={`w-12 h-12 rounded-lg shadow-lg ${theme.bg} border border-white/10`}></div>
-                        <div className="text-left">
-                        <div className="font-bold theme-text-primary">{theme.name}</div>
-                        <div className="text-xs theme-text-secondary">Accent: {theme.accent}</div>
-                        </div>
-                        {config.themeName === key && <Check size={20} className="ml-auto theme-accent-text" />}
-                        </button>
-                    ))}
-                    </div>
-                    </div>
+                        case 'apps':
+                            return (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <h2 className="text-2xl font-bold theme-text-primary">Applications Manager</h2>
+                                <div className="theme-bg-secondary p-4 rounded-2xl theme-border border space-y-2">
+                                {Object.values(APPS).map(app => (
+                                    <div key={app.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors">
+                                    <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center">
+                                    {typeof app.icon !== 'string' && <app.icon size={20} className="text-blue-400"/>}
+                                    </div>
+                                    <div>
+                                    <div className="font-bold theme-text-primary">{app.title}</div>
+                                    <div className="text-xs text-slate-500">{app.id}</div>
+                                    </div>
+                                    </div>
+                                    <button onClick={() => toggleApp(app.id)} className="text-2xl transition-colors">
+                                    {(localConfig.disabledApps || []).includes(app.id)
+                                        ? <ToggleLeft className="text-slate-600" size={32} />
+                                        : <ToggleRight className="theme-accent-text" size={32} />
+                                    }
+                                    </button>
+                                    </div>
+                                ))}
+                                </div>
+                                </div>
+                            );
 
-                    {/* Custom Themes */}
-                    <div className="theme-bg-secondary p-6 rounded-2xl theme-border border">
-                    <label className="block text-sm font-medium theme-text-secondary mb-4 flex items-center justify-between">
-                    <span className="flex items-center gap-2"><FileCode size={16} className="text-green-400" /> Custom Themes (CSS)</span>
-                    <span className="text-xs text-slate-500">~/.config/Blue-Environment/themes/</span>
-                    </label>
-                    <div className="space-y-2">
-                    {customThemes.length === 0 && <div className="text-sm text-slate-500 italic">No custom themes found. Add .css files to config folder.</div>}
-                    {customThemes.map((theme) => (
-                        <button
-                        key={theme.id}
-                        onClick={() => handleSave({ themeName: theme.id })}
-                        className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all ${config.themeName === theme.id ? 'bg-blue-600/20 border-blue-500' : 'theme-bg-primary theme-border hover:theme-bg-secondary'}`}
-                        >
-                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-700 to-gray-900 border border-white/10 flex items-center justify-center text-xs font-mono">CSS</div>
-                        <div className="text-left">
-                        <div className="font-bold theme-text-primary">{theme.name}</div>
-                        <div className="text-xs theme-text-secondary">Custom File</div>
-                        </div>
-                        {config.themeName === theme.id && <Check size={20} className="ml-auto theme-accent-text" />}
-                        </button>
-                    ))}
-                    </div>
-                    </div>
-                    </div>
-                );
-
-                case 'wifi':
-                    return (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-bold theme-text-primary">Wi-Fi Networks</h2>
-                        <button onClick={scanNetworks} className={`p-2 theme-bg-secondary rounded-full hover:bg-white/10 ${scanning ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button>
-                        </div>
-                        <div className="theme-bg-secondary theme-border border rounded-2xl overflow-hidden">
-                        {networks.length === 0 && !scanning && <div className="p-8 text-center theme-text-secondary">No networks found</div>}
-                        {networks.map((net, i) => (
-                            <div key={i} className={`flex items-center justify-between p-4 border-b theme-border last:border-0 transition-colors ${net.in_use ? 'bg-blue-500/10' : 'hover:bg-white/5'}`}>
-                            <div className="flex items-center gap-3">
-                            <Wifi size={20} className={net.signal > 60 ? "text-green-400" : "text-yellow-400"} />
-                            <div>
-                            <div className="font-medium theme-text-primary flex items-center gap-2">
-                            {net.ssid}
-                            {net.in_use && <span className="text-[10px] bg-green-500/20 text-green-400 px-2 rounded-full">Connected</span>}
-                            </div>
-                            <div className="text-xs theme-text-secondary flex items-center gap-1">
-                            {net.secure ? <Lock size={10} /> : <Unlock size={10} />}
-                            {net.secure ? "Secure" : "Open"} • {net.signal}% Signal
-                            </div>
-                            </div>
-                            </div>
-                            {net.in_use ? (
-                                <button className="px-4 py-2 bg-green-600/20 text-green-400 rounded-lg text-sm font-medium cursor-default">Connected</button>
-                            ) : (
-                                <button
-                                onClick={() => handleConnectWifi(net.ssid)}
-                                disabled={connectingTo !== null}
-                                className="px-4 py-2 theme-bg-primary hover:theme-accent hover:text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
-                                >
-                                {connectingTo === net.ssid && <Loader2 size={14} className="animate-spin" />}
-                                {connectingTo === net.ssid ? 'Connecting...' : 'Connect'}
+                        case 'personalization':
+                            return (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <div className="flex justify-between items-center">
+                                <h2 className="text-2xl font-bold theme-text-primary">Personalization</h2>
+                                <button onClick={() => setIsEditingTheme(!isEditingTheme)} className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-colors">
+                                <Edit3 size={14} /> Theme Editor
                                 </button>
-                            )}
-                            </div>
-                        ))}
-                        </div>
-                        </div>
-                    );
+                                </div>
 
-                case 'bluetooth':
-                    return (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-bold theme-text-primary">Bluetooth</h2>
-                        <button onClick={scanBluetooth} className={`p-2 theme-bg-secondary rounded-full hover:bg-white/10 ${scanning ? 'animate-spin' : ''}`}><RefreshCw size={18}/></button>
-                        </div>
-                        <div className="theme-bg-secondary theme-border border rounded-2xl overflow-hidden">
-                        {btDevices.map((dev, i) => (
-                            <div key={i} className="flex items-center justify-between p-4 border-b theme-border last:border-0 hover:bg-white/5 transition-colors">
-                            <div className="flex items-center gap-3">
-                            <Bluetooth size={20} className={dev.connected ? "theme-accent-text" : "theme-text-secondary"} />
-                            <div>
-                            <div className="font-medium theme-text-primary">{dev.name}</div>
-                            <div className="text-xs theme-text-secondary capitalize">{dev.type || 'Unknown'} • {dev.connected ? "Connected" : "Not Connected"}</div>
-                            </div>
-                            </div>
-                            <button
-                            onClick={() => handleToggleBt(dev.mac)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${dev.connected ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'theme-bg-primary hover:theme-accent hover:text-white'}`}
-                            >
-                            {dev.connected ? "Disconnect" : "Pair"}
-                            </button>
-                            </div>
-                        ))}
-                        </div>
-                        </div>
-                    );
+                                {isEditingTheme && (
+                                    <div className="theme-bg-secondary p-6 rounded-2xl theme-border border animate-in slide-in-from-top-4">
+                                    <h3 className="font-bold mb-4">Create Custom Theme</h3>
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                    <label className="text-xs text-slate-400 block mb-1">Background</label>
+                                    <div className="flex gap-2">
+                                    <input type="color" value={themeEditValues.bgPrimary} onChange={e => setThemeEditValues({...themeEditValues, bgPrimary: e.target.value})} className="h-8 w-12 rounded cursor-pointer" />
+                                    <input className="bg-slate-900 border border-white/10 rounded px-2 text-xs w-full" value={themeEditValues.bgPrimary} readOnly />
+                                    </div>
+                                    </div>
+                                    <div>
+                                    <label className="text-xs text-slate-400 block mb-1">Secondary BG</label>
+                                    <div className="flex gap-2">
+                                    <input type="color" value={themeEditValues.bgSecondary} onChange={e => setThemeEditValues({...themeEditValues, bgSecondary: e.target.value})} className="h-8 w-12 rounded cursor-pointer" />
+                                    <input className="bg-slate-900 border border-white/10 rounded px-2 text-xs w-full" value={themeEditValues.bgSecondary} readOnly />
+                                    </div>
+                                    </div>
+                                    <div>
+                                    <label className="text-xs text-slate-400 block mb-1">Text Color</label>
+                                    <div className="flex gap-2">
+                                    <input type="color" value={themeEditValues.textPrimary} onChange={e => setThemeEditValues({...themeEditValues, textPrimary: e.target.value})} className="h-8 w-12 rounded cursor-pointer" />
+                                    <input className="bg-slate-900 border border-white/10 rounded px-2 text-xs w-full" value={themeEditValues.textPrimary} readOnly />
+                                    </div>
+                                    </div>
+                                    <div>
+                                    <label className="text-xs text-slate-400 block mb-1">Accent Color</label>
+                                    <div className="flex gap-2">
+                                    <input type="color" value={themeEditValues.accent} onChange={e => setThemeEditValues({...themeEditValues, accent: e.target.value})} className="h-8 w-12 rounded cursor-pointer" />
+                                    <input className="bg-slate-900 border border-white/10 rounded px-2 text-xs w-full" value={themeEditValues.accent} readOnly />
+                                    </div>
+                                    </div>
+                                    </div>
+                                    <button onClick={saveCustomTheme} className="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-bold text-sm">Save Custom Theme</button>
+                                    </div>
+                                )}
 
-                case 'about':
-                    return (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h2 className="text-2xl font-bold theme-text-primary">About System</h2>
-                        <div className="bg-gradient-to-br from-blue-900/50 to-slate-900 p-8 rounded-3xl theme-border border flex items-center gap-6">
-                        <div className="w-24 h-24 theme-accent rounded-full flex items-center justify-center shadow-2xl text-white">
-                        <span className="text-4xl font-bold">B</span>
-                        </div>
-                        <div>
-                        <h3 className="text-2xl font-bold text-white">Blue Environment</h3>
-                        <p className="text-blue-200">Version 1.3.0 (Nightly)</p>
-                        <p className="text-slate-400 text-sm mt-2">Running on HackerOS Linux</p>
-                        </div>
-                        </div>
-                        </div>
-                    );
-                default:
-                    return null;
-        }
-    };
+                                {/* Standard Themes */}
+                                <div className="grid grid-cols-2 gap-4">
+                                {Object.entries(THEMES).map(([key, theme]) => (
+                                    <button
+                                    key={key}
+                                    onClick={() => handleUpdate({ themeName: key as any })}
+                                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${localConfig.themeName === key ? 'bg-blue-600/20 border-blue-500' : 'theme-bg-primary theme-border hover:theme-bg-secondary'}`}
+                                    >
+                                    <div className={`w-12 h-12 rounded-lg shadow-lg ${theme.bg} border border-white/10`}></div>
+                                    <div className="text-left">
+                                    <div className="font-bold theme-text-primary">{theme.name}</div>
+                                    <div className="text-xs theme-text-secondary">Default</div>
+                                    </div>
+                                    {localConfig.themeName === key && <Check size={20} className="ml-auto theme-accent-text" />}
+                                    </button>
+                                ))}
+                                {customThemes.map((theme) => (
+                                    <button
+                                    key={theme.id}
+                                    onClick={() => handleUpdate({ themeName: theme.id })}
+                                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${localConfig.themeName === theme.id ? 'bg-blue-600/20 border-blue-500' : 'theme-bg-primary theme-border hover:theme-bg-secondary'}`}
+                                    >
+                                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-700 to-gray-900 border border-white/10 flex items-center justify-center text-xs font-mono">CSS</div>
+                                    <div className="text-left">
+                                    <div className="font-bold theme-text-primary">{theme.name}</div>
+                                    <div className="text-xs theme-text-secondary">Custom</div>
+                                    </div>
+                                    {localConfig.themeName === theme.id && <Check size={20} className="ml-auto theme-accent-text" />}
+                                    </button>
+                                ))}
+                                </div>
+                                </div>
+                            );
 
-    return (
-        <div className="flex h-full theme-bg-primary theme-text-primary selection:bg-blue-500/30">
-        <div className="w-64 theme-bg-secondary/50 border-r theme-border p-4 flex flex-col gap-1">
-        <h2 className="text-xl font-bold mb-6 px-2 flex items-center gap-2 theme-text-primary">
-        <div className="w-6 h-6 theme-accent rounded flex items-center justify-center text-[10px] text-white">B</div>
-        Settings
-        </h2>
-        <TabButton
-        id="display"
-        icon={Monitor}
-        label="Display"
-        isActive={activeTab === 'display'}
-        onClick={() => setActiveTab('display')}
-        />
-        <TabButton
-        id="bar"
-        icon={LayoutPanelTop}
-        label="Dock & Bar"
-        isActive={activeTab === 'bar'}
-        onClick={() => setActiveTab('bar')}
-        />
-        <TabButton
-        id="personalization"
-        icon={Palette}
-        label="Themes"
-        isActive={activeTab === 'personalization'}
-        onClick={() => setActiveTab('personalization')}
-        />
-        <TabButton
-        id="wifi"
-        icon={Wifi}
-        label="Wi-Fi"
-        isActive={activeTab === 'wifi'}
-        onClick={() => { setActiveTab('wifi'); scanNetworks(); }}
-        />
-        <TabButton
-        id="bluetooth"
-        icon={Bluetooth}
-        label="Bluetooth"
-        isActive={activeTab === 'bluetooth'}
-        onClick={() => { setActiveTab('bluetooth'); scanBluetooth(); }}
-        />
-        <TabButton
-        id="sound"
-        icon={Volume2}
-        label="Sound"
-        isActive={activeTab === 'sound'}
-        onClick={() => setActiveTab('sound')}
-        />
-        <TabButton
-        id="users"
-        icon={User}
-        label="Users"
-        isActive={activeTab === 'users'}
-        onClick={() => setActiveTab('users')}
-        />
-        <div className="my-2 h-px bg-white/5" />
-        <TabButton
-        id="about"
-        icon={Info}
-        label="About"
-        isActive={activeTab === 'about'}
-        onClick={() => setActiveTab('about')}
-        />
-        </div>
-        <div className="flex-1 p-8 overflow-y-auto">
-        {renderContent()}
-        </div>
-        </div>
-    );
+                            case 'display':
+                                return (
+                                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                    <h2 className="text-2xl font-bold theme-text-primary">Display & Wallpaper</h2>
+                                    <div className="theme-bg-secondary p-6 rounded-2xl theme-border border">
+                                    <label className="block text-sm font-medium theme-text-secondary mb-4 flex items-center gap-2">
+                                    <ImageIcon size={16} className="theme-accent-text" /> Wallpapers (Video Supported)
+                                    </label>
+                                    <div className="grid grid-cols-3 gap-4 max-h-80 overflow-y-auto custom-scrollbar p-1">
+                                    {wallpapers.map((wp, idx) => (
+                                        <div
+                                        key={idx}
+                                        className={`relative aspect-video rounded-xl overflow-hidden cursor-pointer border-2 transition-all hover:scale-105 ${localConfig.wallpaper === wp ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-transparent'}`}
+                                        onClick={() => handleUpdate({ wallpaper: wp })}
+                                        >
+                                        {(wp.endsWith('.mp4') || wp.endsWith('.webm')) ? (
+                                            <video src={wp} className="w-full h-full object-cover" muted loop />
+                                        ) : (
+                                            <img src={wp} className="w-full h-full object-cover" loading="lazy" alt={`Wallpaper ${idx}`} />
+                                        )}
+                                        </div>
+                                    ))}
+                                    </div>
+                                    </div>
+                                    </div>
+                                );
+
+                            case 'system':
+                                return (
+                                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                    <h2 className="text-2xl font-bold theme-text-primary">System Information</h2>
+                                    <div className="theme-bg-secondary p-6 rounded-2xl theme-border border flex items-center gap-6">
+                                    <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-xl">B</div>
+                                    <div>
+                                    <h3 className="text-xl font-bold">{sysInfo?.Name || "Blue Environment"}</h3>
+                                    <p className="text-slate-400">Version {sysInfo?.Version || "0.2.0-Alpha"}</p>
+                                    <p className="text-slate-500 text-sm mt-1">{sysInfo?.Copyright}</p>
+                                    </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="p-4 theme-bg-secondary rounded-xl border theme-border flex items-center gap-4">
+                                    <Cpu size={24} className="text-blue-400" />
+                                    <div className="min-w-0">
+                                    <div className="text-sm text-slate-500">Processor</div>
+                                    <div className="font-medium truncate" title={realStats?.cpu_brand}>{realStats?.cpu_brand || "Loading..."}</div>
+                                    </div>
+                                    </div>
+                                    <div className="p-4 theme-bg-secondary rounded-xl border theme-border flex items-center gap-4">
+                                    <HardDrive size={24} className="text-green-400" />
+                                    <div>
+                                    <div className="text-sm text-slate-500">Memory</div>
+                                    <div className="font-medium">
+                                    {realStats ? `${(realStats.total_ram / 1024 / 1024 / 1024).toFixed(1)} GB` : "Loading..."}
+                                    </div>
+                                    </div>
+                                    </div>
+                                    <div className="p-4 theme-bg-secondary rounded-xl border theme-border flex items-center gap-4">
+                                    <Shield size={24} className="text-purple-400" />
+                                    <div className="min-w-0">
+                                    <div className="text-sm text-slate-500">Kernel</div>
+                                    <div className="font-medium truncate" title={realStats?.kernel}>{realStats?.kernel || "Unknown"}</div>
+                                    </div>
+                                    </div>
+                                    <div className="p-4 theme-bg-secondary rounded-xl border theme-border flex items-center gap-4">
+                                    <User size={24} className="text-orange-400" />
+                                    <div className="min-w-0">
+                                    <div className="text-sm text-slate-500">User</div>
+                                    <div className="font-medium truncate">{realStats?.username || "Unknown"}</div>
+                                    </div>
+                                    </div>
+                                    <div className="p-4 theme-bg-secondary rounded-xl border theme-border flex items-center gap-4">
+                                    <Hash size={24} className="text-cyan-400" />
+                                    <div className="min-w-0">
+                                    <div className="text-sm text-slate-500">Hostname</div>
+                                    <div className="font-medium truncate">{realStats?.hostname || "localhost"}</div>
+                                    </div>
+                                    </div>
+                                    </div>
+                                    </div>
+                                );
+
+                                default:
+                                    return <div className="p-10 text-center text-slate-500">Select a category</div>;
+                    }
+                };
+
+                return (
+                    <div className="flex h-full theme-bg-primary theme-text-primary selection:bg-blue-500/30">
+                    <div className="w-64 theme-bg-secondary/50 border-r theme-border p-4 flex flex-col gap-1">
+                    <h2 className="text-xl font-bold mb-6 px-2 flex items-center gap-2 theme-text-primary">
+                    <div className="w-6 h-6 theme-accent rounded flex items-center justify-center text-[10px] text-white">B</div>
+                    Settings
+                    </h2>
+                    <TabButton
+                    id="wifi"
+                    icon={Wifi}
+                    label="Wi-Fi"
+                    isActive={activeTab === 'wifi'}
+                    onClick={() => setActiveTab('wifi')}
+                    />
+                    <TabButton
+                    id="bluetooth"
+                    icon={Bluetooth}
+                    label="Bluetooth"
+                    isActive={activeTab === 'bluetooth'}
+                    onClick={() => setActiveTab('bluetooth')}
+                    />
+                    <TabButton
+                    id="apps"
+                    icon={AppWindow}
+                    label="Applications"
+                    isActive={activeTab === 'apps'}
+                    onClick={() => setActiveTab('apps')}
+                    />
+                    <TabButton
+                    id="personalization"
+                    icon={Palette}
+                    label="Themes"
+                    isActive={activeTab === 'personalization'}
+                    onClick={() => setActiveTab('personalization')}
+                    />
+                    <TabButton
+                    id="display"
+                    icon={Monitor}
+                    label="Display"
+                    isActive={activeTab === 'display'}
+                    onClick={() => setActiveTab('display')}
+                    />
+                    <TabButton
+                    id="system"
+                    icon={Info}
+                    label="System"
+                    isActive={activeTab === 'system'}
+                    onClick={() => setActiveTab('system')}
+                    />
+                    </div>
+                    <div className="flex-1 p-8 overflow-y-auto">
+                    {renderContent()}
+                    </div>
+                    </div>
+                );
 };
 
 export default SettingsApp;
