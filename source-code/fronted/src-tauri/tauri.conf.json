@@ -7,8 +7,8 @@
     "withGlobalTauri": true
   },
   "package": {
-    "productName": "blue-fronted",
-    "version": "0.3.0"
+    "productName": "blue-environment",
+    "version": "1.0.0"
   },
   "tauri": {
     "allowlist": {
@@ -48,11 +48,12 @@
     },
     "windows": [
       {
-        "fullscreen": false,
+        "fullscreen": true,
         "resizable": true,
         "title": "Blue Environment",
         "width": 1280,
-        "height": 800
+        "height": 800,
+        "decorations": false
       }
     ]
   }
