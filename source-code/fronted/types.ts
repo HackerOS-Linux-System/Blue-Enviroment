@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import React from 'react';
 
 // Internal Apps (React Components)
 export enum AppId {
@@ -18,9 +18,7 @@ export enum AppId {
     SYSTEM_MONITOR = 'system_monitor',
     BLUE_SCREEN = 'blue_screen',
     BLUE_CONNECT = 'blue_connect',
-    BLUE_SOFTWARE = 'blue_software',
-
-    EXTERNAL = 'external'
+    BLUE_SOFTWARE = 'blue_software'
 }
 
 export interface DesktopEntry {
@@ -54,6 +52,8 @@ export interface WindowState {
     isMaximized: boolean;
     zIndex: number;
     isExternal: boolean;
+    desktopId: number; // For Virtual Desktops (0, 1, 2...)
+    props?: any; // Extra props to pass to the component
 }
 
 export interface CustomTheme {
@@ -65,10 +65,12 @@ export interface CustomTheme {
 
 export interface UserConfig {
     wallpaper: string;
-    themeName: 'blue-default' | 'cyberpunk' | 'dracula' | 'light-glass' | string; // Can be a custom theme ID
+    themeName: 'blue-default' | 'cyberpunk' | 'dracula' | 'light-glass' | string;
     accentColor: string;
     displayScale: number;
     barPosition: 'top' | 'bottom';
+    disabledApps: string[]; // List of AppIds that are hidden
+    pinnedApps: string[]; // List of AppIds pinned to the taskbar
 }
 
 export interface AppProps {
@@ -79,7 +81,7 @@ export type PackageSource = 'apt' | 'flatpak' | 'snap' | 'brew' | 'manual';
 
 export interface SoftwarePackage {
     id: string;
-    packageId: string; // The real package name (e.g., 'firefox', 'org.videolan.VLC')
+    packageId: string;
     source: PackageSource;
     name: string;
     description: string;
@@ -103,4 +105,15 @@ export interface BluetoothDevice {
     type?: string;
     mac: string;
     connected: boolean;
+}
+
+export interface Notification {
+    id: string;
+    title: string;
+    message: string;
+    timestamp: Date;
+    type: 'info' | 'success' | 'warning' | 'error';
+    read: boolean;
+    actionLabel?: string;
+    onAction?: () => void;
 }
