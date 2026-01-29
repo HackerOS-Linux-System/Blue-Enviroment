@@ -1,11 +1,11 @@
 {
-  "name": "blue-fronted",
+  "name": "blue-environment",
   "private": true,
-  "version": "0.3.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node generate_icon.js && tsc && vite build && tauri build && mkdir -p ~/.hackeros/Blue-Enviroment/ && cp src-tauri/target/release/blue-environment ~/.hackeros/Blue-Enviroment/blue-environment && echo 'Build successful. Binary copied to ~/.hackeros/Blue-Enviroment/'",
+    "build": "node generate_icon.js && tsc && vite build && tauri build",
     "preview": "vite preview",
     "tauri": "tauri",
     "launcher": "python3 launcher/main.py"
@@ -15,7 +15,9 @@
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@tauri-apps/api": "^1.5.0"
+    "@tauri-apps/api": "^1.5.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.5.0",
