@@ -13,6 +13,7 @@ import BlueScreenApp from './components/apps/BlueScreenApp';
 import BlueMediaApp from './components/apps/BlueMediaApp';
 import BlueConnectApp from './components/apps/BlueConnectApp';
 import BlueSoftwareApp from './components/apps/BlueSoftwareApp';
+import TerminalApp from './components/apps/TerminalApp';
 
 export const WALLPAPER_URL = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop";
 
@@ -26,10 +27,11 @@ export const THEMES = {
 export const APPS: Record<AppId, AppDefinition> = {
     [AppId.TERMINAL]: {
         id: AppId.TERMINAL,
-        title: 'Hacker Term',
+        title: 'Blue Terminal',
         icon: Terminal,
-        isExternal: true,
-        component: () => null,
+        component: TerminalApp,
+        defaultWidth: 700,
+            defaultHeight: 500,
     },
     [AppId.BLUE_SOFTWARE]: {
         id: AppId.BLUE_SOFTWARE,
@@ -142,11 +144,5 @@ export const APPS: Record<AppId, AppDefinition> = {
         component: AboutApp,
         defaultWidth: 400,
             defaultHeight: 350,
-    },
-    [AppId.EXTERNAL]: {
-        id: AppId.EXTERNAL,
-        title: 'External App',
-        icon: Box,
-        isExternal: true,
     },
 };
