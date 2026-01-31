@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
-import { Search, ShoppingBag, Download, Check, Trash2, Box, Star, Grid, List, RefreshCw, Loader2, Package, Tag, Layers, Gamepad2, Code, Terminal, Monitor, Video, Music, ArrowRight } from 'lucide-react';
+import { Search, ShoppingBag, Download, Check, Trash2, Box, Star, Grid, Code, Layers, Monitor, Video, Gamepad2, Loader2, ArrowRight } from 'lucide-react';
 import { AppProps, SoftwarePackage } from '../../types';
 import { SystemBridge } from '../../utils/systemBridge';
 
@@ -58,59 +58,93 @@ const BlueSoftwareApp: React.FC<AppProps> = () => {
 
     useEffect(() => {
         let isMounted = true;
+
         const init = async () => {
-            if (!isMounted) return;
-            setLoading(true);
             try {
+                // 1. Get the catalog first
                 const catalog = await SystemBridge.getPackagesCatalog();
                 if (!isMounted) return;
+
+                // Initialize packages with installed=false to show UI immediately
                 setPackages(catalog);
                 setLoading(false);
 
+                // 2. Check installation status in the background
+                // Process in small batches to avoid blocking thread
                 const chunkSize = 2;
                 for (let i = 0; i < catalog.length; i += chunkSize) {
                     if (!isMounted) break;
+
                     const chunk = catalog.slice(i, i + chunkSize);
-                    const results = await Promise.all(chunk.map(async (pkg) => {
+                    const updates = await Promise.all(chunk.map(async (pkg) => {
                         try {
                             const installed = await SystemBridge.checkPackageStatus(pkg);
                             return { id: pkg.id, installed };
-                        } catch (e) { return { id: pkg.id, installed: false }; }
+                        } catch (e) {
+                            return { id: pkg.id, installed: false };
+                        }
                     }));
+
                     if (!isMounted) break;
-                    setPackages(prev => prev.map(p => {
-                        const res = results.find(r => r.id === p.id);
-                        return res ? { ...p, installed: res.installed } : p;
-                    }));
-                    await new Promise(r => setTimeout(r, 50));
+
+                    // Update state efficiently
+                    setPackages(prev => {
+                        // Only update if something changed to reduce renders
+                        const hasChanges = prev.some(p => {
+                            const update = updates.find(u => u.id === p.id);
+                            return update && update.installed !== p.installed;
+                        });
+
+                        if (!hasChanges) return prev;
+
+                        return prev.map(p => {
+                            const update = updates.find(u => u.id === p.id);
+                            return update ? { ...p, installed: update.installed } : p;
+                        });
+                    });
+
+                    // Small breathing room for UI
+                    await new Promise(r => setTimeout(r, 100));
                 }
             } catch (e) {
+                console.error("Failed to load software catalog", e);
                 if (isMounted) setLoading(false);
             }
         };
-        const timer = setTimeout(init, 300);
-        return () => { isMounted = false; clearTimeout(timer); };
-    }, []);
+
+        // Delay start slightly to allow app animation
+        const timer = setTimeout(init, 500);
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+        };
+    }, []); // Empty dependency array ensures this runs once
 
     const handleInstall = useCallback(async (pkg: SoftwarePackage) => {
         setProcessing(prev => ({ ...prev, [pkg.id]: 'Installing...' }));
-        const success = await SystemBridge.installPackage(pkg);
-        if (success) {
-            setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, installed: true } : p));
-            if (selectedPkg?.id === pkg.id) setSelectedPkg(prev => prev ? ({ ...prev, installed: true }) : null);
+        try {
+            const success = await SystemBridge.installPackage(pkg);
+            if (success) {
+                setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, installed: true } : p));
+                if (selectedPkg?.id === pkg.id) setSelectedPkg(prev => prev ? ({ ...prev, installed: true }) : null);
+            }
+        } finally {
+            setProcessing(prev => { const n = {...prev}; delete n[pkg.id]; return n; });
         }
-        setProcessing(prev => { const n = {...prev}; delete n[pkg.id]; return n; });
     }, [selectedPkg]);
 
     const handleUninstall = useCallback(async (pkg: SoftwarePackage) => {
         if (!confirm(`Are you sure you want to uninstall ${pkg.name}?`)) return;
         setProcessing(prev => ({ ...prev, [pkg.id]: 'Removing...' }));
-        const success = await SystemBridge.uninstallPackage(pkg);
-        if (success) {
-            setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, installed: false } : p));
-            if (selectedPkg?.id === pkg.id) setSelectedPkg(prev => prev ? ({ ...prev, installed: false }) : null);
+        try {
+            const success = await SystemBridge.uninstallPackage(pkg);
+            if (success) {
+                setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, installed: false } : p));
+                if (selectedPkg?.id === pkg.id) setSelectedPkg(prev => prev ? ({ ...prev, installed: false }) : null);
+            }
+        } finally {
+            setProcessing(prev => { const n = {...prev}; delete n[pkg.id]; return n; });
         }
-        setProcessing(prev => { const n = {...prev}; delete n[pkg.id]; return n; });
     }, [selectedPkg]);
 
     const filteredPackages = packages.filter(p => {
