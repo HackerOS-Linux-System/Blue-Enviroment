@@ -8,7 +8,7 @@
 #include <math.h>
 #include <pthread.h>
 
-// Force enable TTY mode as requested
+// Force enable TTY mode features
 #define BLUE_TTY 1
 
 #ifdef BLUE_TTY
@@ -48,6 +48,7 @@ struct BlueServer {
     struct wlr_renderer *renderer;
     struct wlr_allocator *allocator;
     struct wlr_scene *scene;
+    struct wlr_scene_rect *background; // Solid color background
     struct wlr_output_layout *output_layout;
     struct wlr_compositor *compositor;
 
@@ -57,7 +58,7 @@ struct BlueServer {
     struct wlr_xcursor_manager *cursor_mgr;
     struct wl_list keyboards;
 
-    // Listeners (Persistent to prevent stack segfaults)
+    // Listeners
     struct wl_listener new_output;
     struct wl_listener new_xdg_surface;
     struct wl_listener new_xwayland_surface;
@@ -129,16 +130,37 @@ struct BlueWindow {
 struct BlueServer server = {0};
 pthread_mutex_t compositor_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* --- CLEANUP HANDLERS --- */
+
+#ifdef BLUE_TTY
+void server_window_destroy(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct BlueWindow *window = wl_container_of(listener, window, destroy);
+    wl_list_remove(&window->link);
+    wl_list_remove(&window->destroy.link);
+    free(window);
+}
+
+void output_destroy(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct BlueOutput *output = wl_container_of(listener, output, destroy);
+    wl_list_remove(&output->frame.link);
+    wl_list_remove(&output->destroy.link);
+    wl_list_remove(&output->link);
+    free(output);
+}
+#endif
+
 /* --- INPUT HANDLING --- */
 
 #ifdef BLUE_TTY
 void server_new_keyboard(struct BlueServer *server, struct wlr_input_device *device) {
     struct BlueKeyboard *keyboard = calloc(1, sizeof(struct BlueKeyboard));
     keyboard->server = server;
-
     keyboard->wlr_keyboard = wlr_keyboard_from_input_device(device);
 
     struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    // Use NULL for defaults, allowing system locale to be picked up eventually
     struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
 
     if (keymap) {
@@ -197,10 +219,13 @@ void server_cursor_button(struct wl_listener *listener, void *data) {
     struct wlr_scene_node *node = wlr_scene_node_at(&server.scene->tree.node, server.cursor->x, server.cursor->y, &sx, &sy);
 
     if (event->state == WL_POINTER_BUTTON_STATE_PRESSED && node) {
-        if (node->parent) {
-            wlr_scene_node_raise_to_top(&node->parent->node);
-        } else {
-            wlr_scene_node_raise_to_top(node);
+        struct wlr_scene_node *current = node;
+        // Walk up to find the window root node
+        while (current && current->parent && current->parent != &server.scene->tree.node) {
+            current = &current->parent->node;
+        }
+        if (current) {
+            wlr_scene_node_raise_to_top(current);
         }
     }
 }
@@ -229,10 +254,13 @@ void output_frame(struct wl_listener *listener, void *data) {
     struct wlr_scene *scene = output->server->scene;
     struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(scene, output->wlr_output);
 
-    // CRITICAL FIX: Ensure scene_output exists before committing
     if (!scene_output) return;
 
-    wlr_scene_output_commit(scene_output, NULL);
+    // FIX: If commit fails (e.g., EGL_BAD_SURFACE), stop attempting to render this frame.
+    // This prevents the infinite loop of errors.
+    if (!wlr_scene_output_commit(scene_output, NULL)) {
+        return;
+    }
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -244,7 +272,7 @@ void server_new_output(struct wl_listener *listener, void *data) {
     struct wlr_output *wlr_output = data;
 
     if (!wlr_output_init_render(wlr_output, server.allocator, server.renderer)) {
-        fprintf(stderr, "[Blue Compositor] Failed to init output render\n");
+        fprintf(stderr, "[Blue Compositor] Failed to init output render for %s\n", wlr_output->name);
         return;
     }
 
@@ -255,7 +283,11 @@ void server_new_output(struct wl_listener *listener, void *data) {
     struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
     if (mode) wlr_output_state_set_mode(&state, mode);
 
-    wlr_output_commit_state(wlr_output, &state);
+    if (!wlr_output_commit_state(wlr_output, &state)) {
+        wlr_output_state_finish(&state);
+        fprintf(stderr, "[Blue Compositor] Failed to commit output state for %s\n", wlr_output->name);
+        return;
+    }
     wlr_output_state_finish(&state);
 
     struct BlueOutput *output = calloc(1, sizeof(struct BlueOutput));
@@ -265,9 +297,20 @@ void server_new_output(struct wl_listener *listener, void *data) {
     output->frame.notify = output_frame;
     wl_signal_add(&wlr_output->events.frame, &output->frame);
 
+    output->destroy.notify = output_destroy;
+    wl_signal_add(&wlr_output->events.destroy, &output->destroy);
+
     wlr_output_layout_add_auto(server.output_layout, wlr_output);
     wl_list_insert(&server.outputs, &output->link);
     printf("[Blue Compositor] Monitor Detected: %s\n", wlr_output->name);
+
+    // Update background size to cover all outputs
+    if (server.background) {
+        wlr_scene_rect_set_size(server.background, 3840, 2160); // Arbitrary large size to cover typical setups
+        wlr_scene_node_raise_to_top(&server.background->node);
+        // Lower to bottom effectively
+        wlr_scene_node_lower_to_bottom(&server.background->node);
+    }
 }
 #endif
 
@@ -286,13 +329,18 @@ void server_new_xdg_surface(struct wl_listener *listener, void *data) {
 
     window->scene_tree = wlr_scene_xdg_surface_create(&server.scene->tree, xdg_surface);
 
-    window->x = 50; window->y = 50;
+    // Center-ish placement
+    window->x = 50 + (rand() % 100);
+    window->y = 50 + (rand() % 100);
     wlr_scene_node_set_position(&window->scene_tree->node, window->x, window->y);
 
     if (xdg_surface->toplevel->app_id) {
         strncpy(window->app_id, xdg_surface->toplevel->app_id, 127);
         printf("[Blue Compositor] New Wayland Window: %s\n", window->app_id);
     }
+
+    window->destroy.notify = server_window_destroy;
+    wl_signal_add(&xdg_surface->events.destroy, &window->destroy);
 
     wl_list_insert(&server.windows, &window->link);
 }
@@ -312,6 +360,9 @@ void server_new_xwayland_surface(struct wl_listener *listener, void *data) {
         printf("[Blue Compositor] New X11 Window: %s\n", window->app_id);
     }
 
+    window->destroy.notify = server_window_destroy;
+    wl_signal_add(&xsurface->events.destroy, &window->destroy);
+
     wl_list_insert(&server.windows, &window->link);
 }
 #endif
@@ -325,6 +376,7 @@ void set_output_brightness(float value) {
         size_t size = wlr_output_get_gamma_size(output->wlr_output);
         if (size == 0) continue;
         uint16_t *lut = malloc(size * sizeof(uint16_t) * 3);
+        if (!lut) continue;
 
         for(size_t i=0; i<size; i++) {
             uint16_t v = (uint16_t)(65535.0 * value * ((float)i / (size-1)));
@@ -348,7 +400,7 @@ void move_surface(const char* app_id, int x, int y, int width, int height) {
     #ifdef BLUE_TTY
     struct BlueWindow *window;
     wl_list_for_each(window, &server.windows, link) {
-        if (strstr(window->app_id, app_id)) {
+        if (window->app_id[0] != '\0' && strstr(window->app_id, app_id)) {
             wlr_scene_node_set_position(&window->scene_tree->node, x, y);
 
             if (!window->is_x11 && window->xdg_toplevel) {
@@ -369,9 +421,10 @@ void* compositor_thread(void* arg) {
     #ifdef BLUE_TTY
     wlr_log_init(WLR_DEBUG, NULL);
 
-    // Force logind backend as requested
-    setenv("LIBSEAT_BACKEND", "logind", 1);
-    printf("[Blue Compositor] Forcing LIBSEAT_BACKEND=logind\n");
+    // FIX: Do NOT force logind unless specifically required.
+    // Libseat will automatically choose between seatd and logind.
+    // Forcing it breaks systems using seatd.
+    // setenv("LIBSEAT_BACKEND", "logind", 1);
 
     server.wl_display = wl_display_create();
     if (!server.wl_display) {
@@ -381,7 +434,7 @@ void* compositor_thread(void* arg) {
 
     server.backend = wlr_backend_autocreate(wl_display_get_event_loop(server.wl_display), &server.session);
     if (!server.backend) {
-        fprintf(stderr, "[Blue Compositor] Failed to create backend\n");
+        fprintf(stderr, "[Blue Compositor] Failed to create backend. Check session permissions (video group/seatd).\n");
         wl_display_destroy(server.wl_display);
         return NULL;
     }
@@ -394,7 +447,9 @@ void* compositor_thread(void* arg) {
         return NULL;
     }
 
-    wlr_renderer_init_wl_display(server.renderer, server.wl_display);
+    if (!wlr_renderer_init_wl_display(server.renderer, server.wl_display)) {
+        fprintf(stderr, "[Blue Compositor] Failed to init renderer with wl_display\n");
+    }
 
     server.allocator = wlr_allocator_autocreate(server.backend, server.renderer);
     if (!server.allocator) {
@@ -409,6 +464,11 @@ void* compositor_thread(void* arg) {
     server.output_layout = wlr_output_layout_create(server.wl_display);
 
     wlr_scene_attach_output_layout(server.scene, server.output_layout);
+
+    // FIX: Add a background color to the scene so TTY isn't pitch black
+    float color[4] = {0.05f, 0.05f, 0.1f, 1.0f}; // Dark Blue/Grey
+    server.background = wlr_scene_rect_create(&server.scene->tree, 1920, 1080, color);
+    wlr_scene_node_set_position(&server.background->node, 0, 0);
 
     wl_list_init(&server.outputs);
     wl_list_init(&server.windows);
@@ -455,7 +515,7 @@ void* compositor_thread(void* arg) {
     wl_signal_add(&server.cursor->events.frame, &server.cursor_frame);
 
     if (!wlr_backend_start(server.backend)) {
-        fprintf(stderr, "Failed to start backend\n");
+        fprintf(stderr, "[Blue Compositor] Failed to start backend\n");
         wl_display_destroy(server.wl_display);
         return NULL;
     }
