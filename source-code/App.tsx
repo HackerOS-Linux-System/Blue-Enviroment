@@ -86,7 +86,7 @@ export default function App() {
 
     // Keyboard Shortcuts State
     const lastMetaDownTime = useRef<number>(0);
-    const doubleTapTimer = useRef<NodeJS.Timeout | null>(null);
+    const doubleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isAltPressed = useRef(false);
 
     const desktopRef = useRef<HTMLDivElement>(null);

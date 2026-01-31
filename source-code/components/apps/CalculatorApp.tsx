@@ -22,11 +22,11 @@ const CalculatorApp: React.FC<AppProps> = () => {
 
     const handleEqual = () => {
         try {
-            // Note: using eval is simple for this demo but unsafe in prod without sanitization.
-            // Since input is strictly controlled via buttons, it's acceptable here.
             const fullEq = equation + display;
-            // eslint-disable-next-line no-eval
-            const result = eval(fullEq.replace('x', '*').replace('÷', '/'));
+            // Use Function constructor instead of eval for safer execution
+            // eslint-disable-next-line no-new-func
+            const result = new Function('return ' + fullEq.replace('x', '*').replace('÷', '/'))();
+
             setDisplay(String(result));
             setEquation('');
             setIsNewNumber(true);

@@ -6,9 +6,6 @@ import { FitAddon } from 'xterm-addon-fit';
 import { AppProps } from '../../types';
 import { SystemBridge } from '../../utils/systemBridge';
 
-// Import via side-effect handled in index.html, but typescript needs to know.
-// In a real build, we'd import 'xterm/css/xterm.css'.
-
 const TerminalApp: React.FC<AppProps> = ({ windowId }) => {
     const terminalRef = useRef<HTMLDivElement>(null);
     const xtermRef = useRef<Terminal | null>(null);
@@ -17,16 +14,18 @@ const TerminalApp: React.FC<AppProps> = ({ windowId }) => {
     useEffect(() => {
         if (!terminalRef.current) return;
 
-        // Initialize xterm.js
+        // Initialize xterm.js with HackerOS theme
         const term = new Terminal({
             cursorBlink: true,
             fontSize: 14,
             fontFamily: '"JetBrains Mono", monospace',
+            lineHeight: 1.2,
             theme: {
                 background: '#0f172a', // slate-900
-                foreground: '#f1f5f9', // slate-100
-                    cursor: '#2563eb',     // blue-600
-                    selectionBackground: 'rgba(37, 99, 235, 0.3)',
+                foreground: '#cbd5e1', // slate-300
+                    cursor: '#38bdf8',     // sky-400
+                    cursorAccent: '#0f172a',
+                    selectionBackground: 'rgba(56, 189, 248, 0.3)',
                                   black: '#0f172a',
                                   red: '#ef4444',
                                   green: '#22c55e',
@@ -35,7 +34,7 @@ const TerminalApp: React.FC<AppProps> = ({ windowId }) => {
                                   magenta: '#d946ef',
                                   cyan: '#06b6d4',
                                   white: '#f8fafc',
-                                  brightBlack: '#64748b',
+                                  brightBlack: '#475569',
                                   brightRed: '#f87171',
                                   brightGreen: '#4ade80',
                                   brightYellow: '#fde047',
@@ -58,17 +57,16 @@ const TerminalApp: React.FC<AppProps> = ({ windowId }) => {
 
         // 1. Spawn PTY on Backend
         SystemBridge.spawnPty(windowId).then(() => {
-            // 2. Handle Resize
             fitAddon.fit();
             SystemBridge.resizePty(windowId, term.cols, term.rows);
         });
 
-        // 3. Send Input to PTY
+        // 2. Send Input to PTY
         term.onData((data: string) => {
             SystemBridge.writePty(windowId, data);
         });
 
-        // 4. Listen for Output from PTY (Using Tauri Events)
+        // 3. Listen for Output from PTY (Using Tauri Events)
         // @ts-ignore
         if (window.__TAURI__) {
             // @ts-ignore
@@ -83,10 +81,11 @@ const TerminalApp: React.FC<AppProps> = ({ windowId }) => {
             };
         } else {
             // Fallback for browser-only dev mode (Mock)
-            term.write('\r\n\x1b[33m[WARN] Running in Browser Mode. PTY not available.\x1b[0m\r\n');
-            term.write('$ ');
+            term.write('\r\n\x1b[1;34m Blue Environment \x1b[0m\r\n');
+            term.write('\x1b[33m[WARN] Browser mode: PTY not active.\x1b[0m\r\n');
+            term.write('user@blue:~$ ');
             term.onData((d: string) => {
-                if(d === '\r') term.write('\r\n$ ');
+                if(d === '\r') term.write('\r\nuser@blue:~$ ');
                 else term.write(d);
             });
         }
@@ -106,7 +105,7 @@ const TerminalApp: React.FC<AppProps> = ({ windowId }) => {
     }, [windowId]);
 
     return (
-        <div className="h-full w-full bg-slate-900 p-2 overflow-hidden">
+        <div className="h-full w-full bg-slate-900 p-1 overflow-hidden" onContextMenu={(e) => { e.preventDefault(); /* Custom menu could go here */ }}>
         <div ref={terminalRef} className="h-full w-full" />
         </div>
     );

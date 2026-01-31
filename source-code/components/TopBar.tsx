@@ -109,7 +109,7 @@ const TopBar: React.FC<TopBarProps> = ({
 
     // Hover state for taskbar items
     const [hoveredAppId, setHoveredAppId] = useState<string | null>(null);
-    const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Default apps if configuration is missing or empty
     const DEFAULT_PINS = [AppId.TERMINAL, AppId.EXPLORER, AppId.BLUE_WEB, AppId.SETTINGS];
