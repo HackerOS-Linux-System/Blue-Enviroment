@@ -1,10 +1,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod compositor;
+
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use tauri::{Manager, State, Window};
+use tauri::{State, Window};
 use walkdir::WalkDir;
 use regex::Regex;
 use glob::glob;
@@ -13,17 +15,8 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use sysinfo::System;
-use std::ffi::{CString, c_float};
 
-// --- FFI TO C BACKEND ---
-#[link(name = "blue_backend", kind = "static")]
-extern "C" {
-    fn start_compositor() ->  libc::c_int;
-    fn move_surface(app_id: *const libc::c_char, x: libc::c_int, y: libc::c_int, width: libc::c_int, height: libc::c_int);
-    fn set_output_brightness(value: c_float);
-}
-
-// --- PTY STATE MANAGEMENT ---
+// --- STATE MANAGEMENT ---
 
 struct PtyState {
     writers: Arc<Mutex<HashMap<String, Box<dyn Write + Send>>>>,
@@ -33,28 +26,23 @@ struct PtyState {
 
 #[tauri::command]
 fn init_compositor() {
-    unsafe {
-        std::thread::spawn(|| {
-            start_compositor();
-        });
-    }
+    std::thread::spawn(|| {
+        if let Err(e) = compositor::run_compositor() {
+            eprintln!("Compositor error: {}", e);
+        }
+    });
 }
 
 #[tauri::command]
 fn update_surface_rect(app_id: String, x: i32, y: i32, width: i32, height: i32) {
-    let c_app_id = CString::new(app_id).expect("CString::new failed");
-    unsafe {
-        move_surface(c_app_id.as_ptr(), x, y, width, height);
-    }
+    compositor::move_surface(&app_id, x, y, width, height);
 }
 
 #[tauri::command]
 fn set_system_brightness(value: f32) {
     // Value is 0-100 from frontend, normalize to 0.0-1.0
     let normalized = value / 100.0;
-    unsafe {
-        set_output_brightness(normalized);
-    }
+    compositor::set_output_brightness(normalized);
 }
 
 // --- PTY COMMANDS ---
@@ -87,7 +75,7 @@ fn spawn_pty(window: Window, id: String, state: State<'_, PtyState>) -> Result<(
                     let _ = window_clone.emit(&format!("pty-data-{}", id_clone), data);
                 }
                 Ok(_) => break,
-                       Err(_) => break,
+                Err(_) => break,
             }
         }
     });
@@ -198,11 +186,11 @@ fn get_system_apps() -> Vec<AppEntry> {
                     if !name.is_empty() && !clean_exec.is_empty() {
                         apps.push(AppEntry {
                             id: entry.file_name().to_string_lossy().to_string(),
-                                  name,
-                                  comment: "".to_string(),
-                                  icon,
-                                  exec: clean_exec,
-                                  categories: vec!["System".to_string()],
+                            name,
+                            comment: "".to_string(),
+                            icon,
+                            exec: clean_exec,
+                            categories: vec!["System".to_string()],
                         });
                     }
                 }
@@ -221,37 +209,45 @@ fn launch_process(command: String) {
         let cmd = parts[0];
         let args = &parts[1..];
 
-        let mut child = Command::new(cmd)
-        .args(args)
-        .env("GDK_BACKEND", "wayland")
-        .env("QT_QPA_PLATFORM", "wayland")
-        .env("SDL_VIDEODRIVER", "wayland")
-        .env("CLUTTER_BACKEND", "wayland")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
+        let child = Command::new(cmd)
+            .args(args)
+            .env("GDK_BACKEND", "wayland")
+            .env("QT_QPA_PLATFORM", "wayland")
+            .env("SDL_VIDEODRIVER", "wayland")
+            .env("CLUTTER_BACKEND", "wayland")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
 
         match child {
             Ok(_) => println!("Launched embedded process: {}", command),
-                       Err(e) => eprintln!("Failed to launch process {}: {}", command, e),
+            Err(e) => eprintln!("Failed to launch process {}: {}", command, e),
         }
     });
 }
 
 #[tauri::command]
 fn list_files(path: String) -> Vec<FileEntry> {
-    let target_path = if path == "HOME" { dirs::home_dir().unwrap_or(PathBuf::from("/")) } else { PathBuf::from(path) };
+    let target_path = if path == "HOME" {
+        dirs::home_dir().unwrap_or(PathBuf::from("/"))
+    } else {
+        PathBuf::from(path)
+    };
     let mut entries = Vec::new();
     if let Ok(read_dir) = fs::read_dir(target_path) {
         for entry in read_dir.flatten() {
             let metadata = entry.metadata().unwrap();
-            let size = if metadata.is_dir() { "DIR".to_string() } else { format!("{:.1} MB", metadata.len() as f64 / 1024.0 / 1024.0) };
+            let size = if metadata.is_dir() {
+                "DIR".to_string()
+            } else {
+                format!("{:.1} MB", metadata.len() as f64 / 1024.0 / 1024.0)
+            };
             entries.push(FileEntry {
                 name: entry.file_name().to_string_lossy().to_string(),
-                         path: entry.path().to_string_lossy().to_string(),
-                         is_dir: metadata.is_dir(),
-                         size,
+                path: entry.path().to_string_lossy().to_string(),
+                is_dir: metadata.is_dir(),
+                size,
             });
         }
     }
@@ -273,16 +269,33 @@ fn get_system_stats() -> SystemStats {
     let hostname = hostname::get().unwrap_or_default().to_string_lossy().to_string();
     let kernel = System::kernel_version().unwrap_or("Unknown".to_string());
 
-    let volume_output = Command::new("sh").arg("-c").arg("amixer get Master | grep -o '[0-9]*%' | head -1").output();
+    let volume_output = Command::new("sh")
+        .arg("-c")
+        .arg("amixer get Master | grep -o '[0-9]*%' | head -1")
+        .output();
     let volume = match volume_output {
-        Ok(o) => String::from_utf8_lossy(&o.stdout).replace("%", "").trim().parse().unwrap_or(50),
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .replace("%", "")
+            .trim()
+            .parse()
+            .unwrap_or(50),
         Err(_) => 50,
     };
 
-    let wifi_output = Command::new("nmcli").arg("-t").arg("-f").arg("active,ssid").arg("dev").arg("wifi").output();
+    let wifi_output = Command::new("nmcli")
+        .arg("-t")
+        .arg("-f")
+        .arg("active,ssid")
+        .arg("dev")
+        .arg("wifi")
+        .output();
     let wifi_ssid = match wifi_output {
-        Ok(o) => String::from_utf8_lossy(&o.stdout).lines().find(|l| l.starts_with("yes")).map(|l| l.replace("yes:", "")).unwrap_or("Disconnected".to_string()),
-        Err(_) => "Unknown".to_string()
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .find(|l| l.starts_with("yes"))
+            .map(|l| l.replace("yes:", ""))
+            .unwrap_or("Disconnected".to_string()),
+        Err(_) => "Unknown".to_string(),
     };
 
     SystemStats {
@@ -305,12 +318,16 @@ fn get_system_stats() -> SystemStats {
 fn get_processes() -> Vec<ProcessEntry> {
     let mut sys = System::new_all();
     sys.refresh_processes();
-    let mut processes: Vec<ProcessEntry> = sys.processes().iter().map(|(pid, process)| ProcessEntry {
-        pid: pid.to_string(),
-                                                                      name: process.name().to_string(),
-                                                                      cpu: process.cpu_usage(),
-                                                                      memory: process.memory(),
-    }).collect();
+    let mut processes: Vec<ProcessEntry> = sys
+        .processes()
+        .iter()
+        .map(|(pid, process)| ProcessEntry {
+            pid: pid.to_string(),
+            name: process.name().to_string(),
+            cpu: process.cpu_usage(),
+            memory: process.memory(),
+        })
+        .collect();
     processes.sort_by(|a, b| b.memory.cmp(&a.memory));
     processes.truncate(50);
     processes
@@ -330,16 +347,30 @@ fn write_text_file(path: String, content: String) -> Result<(), String> {
 fn take_screenshot() {
     let home = dirs::home_dir().unwrap_or(PathBuf::from("/"));
     let pictures = home.join("Pictures");
-    if !pictures.exists() { let _ = fs::create_dir(&pictures); }
-    let filename = format!("screenshot-{}.png", chrono::Local::now().format("%Y%m%d-%H%M%S"));
+    if !pictures.exists() {
+        let _ = fs::create_dir(&pictures);
+    }
+    let filename = format!(
+        "screenshot-{}.png",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    );
     let path = pictures.join(filename);
-    let _ = Command::new("sh").arg("-c").arg(format!("scrot '{}' || gnome-screenshot -f '{}'", path.to_string_lossy(), path.to_string_lossy())).spawn();
+    let _ = Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "scrot '{}' || gnome-screenshot -f '{}'",
+            path.to_string_lossy(),
+            path.to_string_lossy()
+        ))
+        .spawn();
 }
 
 #[tauri::command]
 fn get_wallpapers() -> Vec<String> {
     let mut wallpapers = Vec::new();
-    wallpapers.push("https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072".to_string());
+    wallpapers.push(
+        "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072".to_string(),
+    );
     if let Ok(entries) = glob("/usr/share/wallpapers/*.{jpg,png,jpeg}") {
         for entry in entries.filter_map(Result::ok) {
             wallpapers.push(format!("file://{}", entry.to_string_lossy()));
@@ -356,7 +387,10 @@ fn load_distro_info() -> std::collections::HashMap<String, String> {
     if let Ok(content) = fs::read_to_string("/etc/os-release") {
         for line in content.lines() {
             if let Some((key, value)) = line.split_once('=') {
-                info.insert(key.to_string(), value.replace("\"", "").to_string());
+                info.insert(
+                    key.to_string(),
+                    value.replace("\"", "").to_string(),
+                );
             }
         }
     }
@@ -379,18 +413,28 @@ fn system_power(action: String) {
 fn save_config(config: String) {
     let home = dirs::home_dir().unwrap_or(PathBuf::from("/"));
     let _ = fs::create_dir_all(home.join(".config/blue-environment"));
-    let _ = fs::write(home.join(".config/blue-environment/settings.json"), config);
+    let _ = fs::write(
+        home.join(".config/blue-environment/settings.json"),
+        config,
+    );
 }
 
 #[tauri::command]
 fn load_config() -> String {
     let home = dirs::home_dir().unwrap_or(PathBuf::from("/"));
-    fs::read_to_string(home.join(".config/blue-environment/settings.json")).unwrap_or("{}".to_string())
+    fs::read_to_string(home.join(".config/blue-environment/settings.json"))
+        .unwrap_or("{}".to_string())
 }
 
 #[tauri::command]
 fn get_wifi_networks_real() -> Vec<WifiNetwork> {
-    let output = Command::new("nmcli").arg("-t").arg("-f").arg("IN-USE,SSID,SIGNAL,SECURITY").arg("dev").arg("wifi").output();
+    let output = Command::new("nmcli")
+        .arg("-t")
+        .arg("-f")
+        .arg("IN-USE,SSID,SIGNAL,SECURITY")
+        .arg("dev")
+        .arg("wifi")
+        .output();
     let mut networks = Vec::new();
     if let Ok(o) = output {
         for line in String::from_utf8_lossy(&o.stdout).lines() {
@@ -398,9 +442,9 @@ fn get_wifi_networks_real() -> Vec<WifiNetwork> {
             if parts.len() >= 3 && !parts[1].is_empty() {
                 networks.push(WifiNetwork {
                     ssid: parts[1].to_string(),
-                              signal: parts[2].parse().unwrap_or(0),
-                              secure: parts.get(3).map(|s| !s.is_empty()).unwrap_or(false),
-                              in_use: parts[0] == "*"
+                    signal: parts[2].parse().unwrap_or(0),
+                    secure: parts.get(3).map(|s| !s.is_empty()).unwrap_or(false),
+                    in_use: parts[0] == "*",
                 });
             }
         }
@@ -411,8 +455,20 @@ fn get_wifi_networks_real() -> Vec<WifiNetwork> {
 
 #[tauri::command]
 fn connect_wifi_real(ssid: String, password: String) -> Result<String, String> {
-    let output = Command::new("nmcli").arg("dev").arg("wifi").arg("connect").arg(&ssid).arg("password").arg(&password).output().map_err(|e| e.to_string())?;
-    if output.status.success() { Ok(String::from_utf8_lossy(&output.stdout).to_string()) } else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+    let output = Command::new("nmcli")
+        .arg("dev")
+        .arg("wifi")
+        .arg("connect")
+        .arg(&ssid)
+        .arg("password")
+        .arg(&password)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
 }
 
 #[tauri::command]
@@ -426,8 +482,8 @@ fn get_bluetooth_devices_real() -> Vec<BluetoothDevice> {
                 if parts.len() >= 3 {
                     devices.push(BluetoothDevice {
                         name: parts[2..].join(" "),
-                                 mac: parts[1].to_string(),
-                                 connected: false // Simplifying for speed
+                        mac: parts[1].to_string(),
+                        connected: false, // Simplifying for speed
                     });
                 }
             }
@@ -440,16 +496,26 @@ fn get_bluetooth_devices_real() -> Vec<BluetoothDevice> {
 fn check_package_installed(package_id: String, source: String) -> bool {
     let cmd = match source.as_str() {
         "apt" => Command::new("dpkg").arg("-s").arg(&package_id).output(),
-        "flatpak" => Command::new("sh").arg("-c").arg(format!("flatpak list --app | grep {}", package_id)).output(),
+        "flatpak" => Command::new("sh")
+            .arg("-c")
+            .arg(format!("flatpak list --app | grep {}", package_id))
+            .output(),
         "snap" => Command::new("snap").arg("list").arg(&package_id).output(),
         "brew" => Command::new("brew").arg("list").arg(&package_id).output(),
         _ => return false,
     };
-    match cmd { Ok(o) => o.status.success(), Err(_) => false }
+    match cmd {
+        Ok(o) => o.status.success(),
+        Err(_) => false,
+    }
 }
 
 #[tauri::command]
-fn manage_package(operation: String, package_id: String, source: String) -> Result<String, String> {
+fn manage_package(
+    operation: String,
+    package_id: String,
+    source: String,
+) -> Result<String, String> {
     let cmd_str = match (source.as_str(), operation.as_str()) {
         ("apt", "install") => format!("pkexec apt-get install -y {}", package_id),
         ("apt", "remove") => format!("pkexec apt-get remove -y {}", package_id),
@@ -457,8 +523,16 @@ fn manage_package(operation: String, package_id: String, source: String) -> Resu
         ("flatpak", "remove") => format!("flatpak uninstall -y {}", package_id),
         _ => return Err("Unsupported".to_string()),
     };
-    let output = Command::new("sh").arg("-c").arg(&cmd_str).output().map_err(|e| e.to_string())?;
-    if output.status.success() { Ok(String::from_utf8_lossy(&output.stdout).to_string()) } else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(&cmd_str)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
 }
 
 #[tauri::command]
@@ -473,14 +547,21 @@ fn get_audio_outputs() -> Vec<AudioOutput> {
                 let name = parts[1].to_string();
                 sinks.push(AudioOutput {
                     id: parts[0].to_string(),
-                           description: name.replace("alsa_output.", "").replace(".analog-stereo", "").replace("_", " "),
-                           active: false,
+                    description: name
+                        .replace("alsa_output.", "")
+                        .replace(".analog-stereo", "")
+                        .replace("_", " "),
+                    active: false,
                 });
             }
         }
     }
     if sinks.is_empty() {
-        sinks.push(AudioOutput { id: "0".to_string(), description: "Default Output (Mock)".to_string(), active: true });
+        sinks.push(AudioOutput {
+            id: "0".to_string(),
+            description: "Default Output (Mock)".to_string(),
+            active: true,
+        });
     }
     sinks
 }
@@ -492,15 +573,37 @@ fn set_audio_output(id: String) {
 
 fn main() {
     tauri::Builder::default()
-    .manage(PtyState { writers: Arc::new(Mutex::new(HashMap::new())) })
-    .invoke_handler(tauri::generate_handler![
-        get_system_apps, launch_process, list_files, get_system_stats, get_processes,
-        read_text_file, write_text_file, take_screenshot, get_wallpapers, load_distro_info,
-        system_power, save_config, load_config, get_wifi_networks_real, connect_wifi_real,
-        get_bluetooth_devices_real, check_package_installed, manage_package,
-        spawn_pty, write_to_pty, resize_pty, get_audio_outputs, set_audio_output,
-        init_compositor, update_surface_rect, set_system_brightness // ADDED
-    ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+        .manage(PtyState {
+            writers: Arc::new(Mutex::new(HashMap::new())),
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_system_apps,
+            launch_process,
+            list_files,
+            get_system_stats,
+            get_processes,
+            read_text_file,
+            write_text_file,
+            take_screenshot,
+            get_wallpapers,
+            load_distro_info,
+            system_power,
+            save_config,
+            load_config,
+            get_wifi_networks_real,
+            connect_wifi_real,
+            get_bluetooth_devices_real,
+            check_package_installed,
+            manage_package,
+            spawn_pty,
+            write_to_pty,
+            resize_pty,
+            get_audio_outputs,
+            set_audio_output,
+            init_compositor,
+            update_surface_rect,
+            set_system_brightness,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
