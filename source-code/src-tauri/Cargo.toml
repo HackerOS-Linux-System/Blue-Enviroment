@@ -1,14 +1,12 @@
 [package]
 name = "blue-environment"
-version = "1.0.0"
+version = "0.2.0"
 description = "Blue Environment"
-authors = ["User"]
+authors = ["HackerOS Team <hackeros068@gmail.com>"]
 edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "1", features = [] }
-cc = "1.0"
-pkg-config = "0.3"
 
 [dependencies]
 tauri = { version = "1", features = [ "shell-all", "fs-all", "path-all", "process-command-api"] }
@@ -24,6 +22,22 @@ dirs = "5.0"
 portable-pty = "0.8"
 hostname = "0.3"
 libc = "0.2"
+# Smithay 0.5 modular features
+smithay = { version = "0.5", features = [
+    "backend_winit",
+    "backend_drm",
+    "backend_libinput",
+    "backend_x11",
+    "renderer_gl",
+    "desktop",
+    "wayland_frontend"
+] }
+wayland-server = "0.30"
+wayland-protocols = { version = "0.30", features = ["server"] }
+xkbcommon = "0.7"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1.0"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
