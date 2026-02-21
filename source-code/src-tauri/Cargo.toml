@@ -22,23 +22,25 @@ dirs = "5.0"
 portable-pty = "0.8"
 hostname = "0.3"
 libc = "0.2"
-# Smithay 0.5 modular features
 smithay = { version = "0.5", features = [
     "backend_winit",
     "backend_drm",
     "backend_libinput",
     "backend_x11",
+    "backend_udev",
     "renderer_gl",
+    "renderer_multi",
     "desktop",
-    "wayland_frontend"
+    "wayland_frontend",
+    "xwayland"
 ] }
 wayland-server = "0.30"
-wayland-protocols = { version = "0.30", features = ["server"] }
+wayland-protocols = { version = "0.30", features = ["server", "unstable"] }
 xkbcommon = "0.7"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 anyhow = "1.0"
+calloop = "0.12"
 
 [features]
-# this feature is used for production builds or when `devPath` points to the filesystem
 custom-protocol = ["tauri/custom-protocol"]
